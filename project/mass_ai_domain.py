@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from datetime import datetime
@@ -10,7 +11,12 @@ import pandas as pd
 
 from ops_store import is_overdue_value, parse_datetime, priority_for_risk_band
 
-CURRENCY_CODE = "TRY"
+# Supported: TRY, USD, EUR, GBP, JPY, SAR, AED, ...
+# Override at runtime: set MASS_AI_CURRENCY=USD before launching.
+_SUPPORTED_CURRENCIES = {"TRY", "USD", "EUR", "GBP", "JPY", "SAR", "AED", "CHF", "CAD", "AUD"}
+_env_currency = os.environ.get("MASS_AI_CURRENCY", "TRY").upper().strip()
+CURRENCY_CODE: str = _env_currency if _env_currency in _SUPPORTED_CURRENCIES else "TRY"
+
 RISK_LABELS = ["Low", "Moderate", "High", "Critical", "Urgent"]
 CRITICAL_RISK_LABELS = {"Critical", "Urgent"}
 
