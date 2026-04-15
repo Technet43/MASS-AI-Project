@@ -1,21 +1,64 @@
-.idea/
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-project/__pycache__/
-project/tests/__pycache__/
-project/dashboard/__pycache__/
-project/legacy_pipeline/__pycache__/
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
 
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Project build outputs
 project/artifacts/
 project/build/
 project/dist/
-business_docs/mass_ai_mvp_business_pack.zip
+build/
+dist/
 
+# Large processed data (use Git LFS for these)
+project/data/processed/*.csv
+project/data/maps/*.csv
+project/data/**/*.pkl
+project/data/**/*.h5
+project/data/**/*.npz
+
+# Trained model artifacts
+project/models/**/*.pkl
+project/models/**/*.h5
+project/models/**/*.joblib
+
+# Logs & temp
 *.log
 *.tmp
 *.temp
+
+# OS
 Thumbs.db
 Desktop.ini
+.DS_Store
+
+# Sensitive / packed archives
+business_docs/mass_ai_mvp_business_pack.zip
+*.zip
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Streamlit secrets
+.streamlit/secrets.toml
