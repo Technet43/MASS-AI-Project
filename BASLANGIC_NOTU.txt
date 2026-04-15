@@ -1,0 +1,34 @@
+MASS-AI Unified Package
+=======================
+
+This project can now be used as an international desktop product package.
+
+Quick start:
+1. Run INSTALL_REQUIREMENTS.bat first.
+2. Open START_MASS_AI_DESKTOP.bat to launch the desktop app directly.
+3. Open START_MASS_AI.bat if you prefer the unified launcher experience.
+
+To build a Windows executable:
+- Run BUILD_DESKTOP_EXE.bat.
+- The packaged app will be created under project\artifacts\dist\MASS_AI_Desktop.exe.
+
+To run a quick health check:
+- Run RUN_SMOKE_TESTS.bat.
+
+Main files:
+- MASS_AI_LAUNCHER.py -> Unified launcher
+- START_MASS_AI_DESKTOP.bat -> Direct desktop app entry point
+- BUILD_DESKTOP_EXE.bat -> Windows executable packaging
+- RUN_SMOKE_TESTS.bat -> Basic smoke tests
+- project\mass_ai_desktop.py -> Main desktop application
+
+Organized folders:
+- project\dashboard -> Streamlit dashboard
+- project\legacy_pipeline -> Older research and pipeline scripts
+- project\tests -> Unit tests
+- project\data\processed -> CSV outputs and sample processed data
+- project\data\maps -> Map sample files
+- project\artifacts -> Build outputs and logs
+- project\packaging -> PyInstaller spec and packaging assets
+- business_docs\project_research -> Paper and presentation files
+- docs\PROJECT_LAYOUT.md -> Clean folder map
