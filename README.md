@@ -28,13 +28,25 @@ The project combines a **desktop analyst workstation** (Tkinter), an **interacti
 
 ## Screenshots
 
-| Desktop Application | Streamlit Dashboard |
+| Login | Main Workspace |
 |---|---|
-| ![Desktop App](images/dashboard_preview.png) | ![Dashboard](images/dashboard_v2_preview.png) |
+| ![Login](images/login_screen.png) | ![Customers](images/desktop_customers.png) |
 
-| Model Results | LSTM Autoencoder |
+| Overview & Model Performance | Priority Watchlist |
 |---|---|
-| ![Models](images/model_results.png) | ![LSTM](images/lstm_autoencoder_results.png) |
+| ![Overview](images/desktop_overview.png) | ![Watchlist](images/chart_watchlist.png) |
+
+| Risk Curve | Risk Mix by Band |
+|---|---|
+| ![Risk Curve](images/chart_risk_curve.png) | ![Risk Mix](images/chart_risk_mix.png) |
+
+<div align="center">
+
+**Model Quality — ROC-AUC & F1**
+
+![Model Quality](images/chart_model_quality.png)
+
+</div>
 
 ---
 
