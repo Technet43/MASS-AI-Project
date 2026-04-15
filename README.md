@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="images/login_screen.png" width="220" align="right" />
-
 # MASS AI Project
 
 ### Milli Akıllı Sayaç Sistemleri
