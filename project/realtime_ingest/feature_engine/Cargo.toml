@@ -1,0 +1,20 @@
+[package]
+name    = "feature_engine"
+version = "0.1.0"
+edition = "2021"
+
+# cdylib → Python-importable .pyd / .so extension
+[lib]
+name       = "feature_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3  = { version = "0.21", features = ["extension-module"] }
+# numpy crate gives direct, zero-copy access to NumPy array memory.
+numpy = { version = "0.21" }
+
+[profile.release]
+opt-level     = 3       # maximum optimisation
+lto           = true    # link-time optimisation (cross-crate inlining)
+codegen-units = 1       # single codegen unit → best LLVM vectorisation
+panic         = "abort" # smaller binary, no unwinding overhead

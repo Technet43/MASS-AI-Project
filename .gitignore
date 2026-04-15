@@ -37,6 +37,7 @@ project/data/maps/*.csv
 project/data/**/*.pkl
 project/data/**/*.h5
 project/data/**/*.npz
+project/data/uploads/
 
 # Trained model artifacts
 project/models/**/*.pkl

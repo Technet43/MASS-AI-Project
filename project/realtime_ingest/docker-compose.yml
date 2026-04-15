@@ -1,0 +1,72 @@
+services:
+  mass-ai-db:
+    image: postgres:16-alpine
+    container_name: mass_ai_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mass_ai
+      POSTGRES_USER: mass_ai
+      POSTGRES_PASSWORD: mass_ai_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mass_ai -d mass_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: mass_ai_mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mass_ai_gateway
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mqtt-broker
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: mass_ai/telemetry
+      DB_HOST: mass-ai-db
+      DB_PORT: "5432"
+      DB_NAME: mass_ai
+      DB_USER: mass_ai
+      DB_PASSWORD: mass_ai_secret
+    depends_on:
+      mass-ai-db:
+        condition: service_healthy
+      mqtt-broker:
+        condition: service_started
+
+  feature-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: mass_ai_feature_worker
+    restart: unless-stopped
+    environment:
+      DB_HOST: mass-ai-db
+      DB_PORT: "5432"
+      DB_NAME: mass_ai
+      DB_USER: mass_ai
+      DB_PASSWORD: mass_ai_secret
+      POLL_INTERVAL: "30"
+      WINDOW_MINUTES: "60"
+      ALERT_THRESHOLD: "0.80"
+      RETRAIN_EVERY: "10"
+    depends_on:
+      mass-ai-db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

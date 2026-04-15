@@ -18,6 +18,7 @@ Calistirma: streamlit run dashboard/app.py
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -26,6 +27,195 @@ from plotly.subplots import make_subplots
 import time
 import os
 import sys
+
+# psycopg2 is optional — live telemetry tab is disabled if not installed.
+try:
+    import psycopg2
+    import psycopg2.extras
+    _PSYCOPG2_AVAILABLE = True
+except ImportError:
+    _PSYCOPG2_AVAILABLE = False
+
+# ─── DB connection helper ────────────────────────────────────────────────────
+_DB_DEFAULTS = dict(
+    host=os.getenv("DB_HOST", "localhost"),
+    port=int(os.getenv("DB_PORT", "5433")),
+    dbname=os.getenv("DB_NAME", "mass_ai"),
+    user=os.getenv("DB_USER", "mass_ai"),
+    password=os.getenv("DB_PASSWORD", "mass_ai_secret"),
+)
+
+def _db_connect():
+    return psycopg2.connect(**_DB_DEFAULTS)
+
+def fetch_alerts(limit: int = 50) -> pd.DataFrame:
+    """Return the most recent *limit* unacknowledged alerts."""
+    sql = """
+        SELECT a.id, a.meter_id, a.anomaly_score, a.severity, a.created_at
+        FROM   alerts a
+        ORDER  BY a.created_at DESC
+        LIMIT  %s
+    """
+    with _db_connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (limit,))
+            rows = cur.fetchall()
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
+    return df
+
+
+def fetch_meter_evidence(meter_id: str, hours: int = 2) -> dict:
+    """Fetch raw telemetry + feature history for one meter (evidence report)."""
+    sql_raw = """
+        SELECT voltage, current, active_power, received_at
+        FROM   raw_telemetry
+        WHERE  meter_id = %s
+          AND  received_at >= NOW() - INTERVAL '%s hours'
+        ORDER  BY received_at ASC
+        LIMIT  500
+    """
+    sql_feat = """
+        SELECT p_avg_1h, v_std_1h, i_peak_1h, sample_count, computed_at
+        FROM   processed_features
+        WHERE  meter_id = %s
+        ORDER  BY computed_at DESC
+        LIMIT  10
+    """
+    sql_alerts = """
+        SELECT anomaly_score, severity, created_at
+        FROM   alerts
+        WHERE  meter_id = %s
+        ORDER  BY created_at DESC
+        LIMIT  5
+    """
+    with _db_connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql_raw,   (meter_id, hours))
+            raw_rows = cur.fetchall()
+            cur.execute(sql_feat,  (meter_id,))
+            feat_rows = cur.fetchall()
+            cur.execute(sql_alerts, (meter_id,))
+            alert_rows = cur.fetchall()
+
+    df_raw   = pd.DataFrame(raw_rows)
+    df_feat  = pd.DataFrame(feat_rows)
+    df_alert = pd.DataFrame(alert_rows)
+    for df in [df_raw, df_feat, df_alert]:
+        if not df.empty:
+            ts_col = [c for c in df.columns if "at" in c]
+            if ts_col:
+                df[ts_col[0]] = pd.to_datetime(df[ts_col[0]], utc=True)
+    return {"raw": df_raw, "features": df_feat, "alerts": df_alert}
+
+
+@st.dialog("Anomaly / Anomali", width="large")
+def show_evidence_dialog(meter_id: str, score: float, severity: str, created_at) -> None:
+    """Modal popup: evidence report for a flagged meter."""
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
+    color = "#E74C3C" if severity == "KRITIK" else "#E67E22"
+
+    meter_label = "Meter" if is_en else "Sayac"
+    score_label = "Anomaly Score" if is_en else "Anomali Skoru"
+    time_label = "Detected At" if is_en else "Tespit Zamani"
+
+    st.markdown(
+        f"<div style='background:{color}22;border-left:4px solid {color};padding:12px;border-radius:6px;margin-bottom:12px'>"
+        f"<b style='color:{color};font-size:1.1rem'>{severity}</b><br>"
+        f"<b>{meter_label}:</b> {meter_id} &nbsp;|&nbsp; "
+        f"<b>{score_label}:</b> {score:.3f} &nbsp;|&nbsp; "
+        f"<b>{time_label}:</b> {created_at}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    try:
+        ev = fetch_meter_evidence(meter_id, hours=2)
+    except Exception as exc:
+        st.error(f"{'Evidence fetch failed' if is_en else 'Kanit verisi cekilemedi'}: {exc}")
+        return
+
+    df_raw = ev["raw"]
+    if df_raw.empty:
+        st.warning("No raw telemetry in last 2 hours for this meter." if is_en else "Bu sayac icin son 2 saatte ham telemetri verisi yok.")
+    else:
+        st.markdown("#### Last 2 Hours Telemetry" if is_en else "#### Son 2 Saatlik Telemetri")
+        fig = go.Figure()
+        for col, color_line, yaxis in [
+            ("active_power", "#E74C3C", "y1"),
+            ("voltage", "#2E86C1", "y2"),
+            ("current", "#27AE60", "y3"),
+        ]:
+            fig.add_trace(go.Scatter(
+                x=df_raw["received_at"],
+                y=df_raw[col],
+                name={
+                    "active_power": ("Power (W)" if is_en else "Guc (W)"),
+                    "voltage": ("Voltage (V)" if is_en else "Voltaj (V)"),
+                    "current": ("Current (A)" if is_en else "Akim (A)"),
+                }[col],
+                line=dict(width=1.5),
+                yaxis=yaxis,
+            ))
+        fig.update_layout(
+            height=320,
+            margin=dict(l=20, r=20, t=10, b=20),
+            legend=dict(orientation="h", y=-0.3),
+            yaxis=dict(title=("Power (W)" if is_en else "Guc (W)"), side="left"),
+            yaxis2=dict(title=("Voltage (V)" if is_en else "Voltaj (V)"), side="right", overlaying="y"),
+            yaxis3=dict(title=("Current (A)" if is_en else "Akim (A)"), side="right", overlaying="y", anchor="free", position=1.0),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Avg Power (W)" if is_en else "Ort. Guc (W)", f"{df_raw['active_power'].mean():.1f}")
+        c2.metric("Voltage Std (V)" if is_en else "Voltaj Std (V)", f"{df_raw['voltage'].std():.2f}")
+        c3.metric("Max Current (A)" if is_en else "Maks. Akim (A)", f"{df_raw['current'].max():.3f}")
+
+    df_feat = ev["features"]
+    if not df_feat.empty:
+        st.markdown("#### Computed Features (Last 10 Passes)" if is_en else "#### Hesaplanan Ozellikler (Son 10 Pass)")
+        st.dataframe(
+            df_feat.rename(columns={
+                "p_avg_1h": "P_avg (W)",
+                "v_std_1h": "V_std",
+                "i_peak_1h": "I_peak (A)",
+                "sample_count": ("Sample" if is_en else "Ornek"),
+                "computed_at": ("Computed At" if is_en else "Hesap Zamani"),
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    if not df_raw.empty:
+        st.markdown("#### Download Evidence Report" if is_en else "#### Kanit Raporu Indir")
+        csv_bytes = df_raw.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label=("Download CSV" if is_en else "CSV olarak indir"),
+            data=csv_bytes,
+            file_name=f"evidence_{meter_id}_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+
+def fetch_live_telemetry(limit: int = 100) -> pd.DataFrame:
+    """Return the most recent *limit* rows from raw_telemetry."""
+    sql = """
+        SELECT id, meter_id, voltage, current, active_power, received_at
+        FROM   raw_telemetry
+        ORDER  BY received_at DESC
+        LIMIT  %s
+    """
+    with _db_connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (limit,))
+            rows = cur.fetchall()
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df["received_at"] = pd.to_datetime(df["received_at"], utc=True)
+    return df
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -40,63 +230,900 @@ st.set_page_config(
 # ========== CUSTOM CSS ==========
 st.markdown("""
 <style>
+    :root {
+        --glass-bg: rgba(255, 255, 255, 0.045);
+        --glass-border: rgba(255, 255, 255, 0.12);
+        --glass-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+        --glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.16);
+        --glass-lowlight: inset 0 -1px 1px rgba(0, 0, 0, 0.24);
+        --text-main: #f5f7fb;
+        --text-muted: rgba(245, 247, 251, 0.62);
+        --line-soft: rgba(255, 255, 255, 0.08);
+    }
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+        background:
+            radial-gradient(circle at 15% 20%, rgba(255,255,255,0.08), transparent 22%),
+            radial-gradient(circle at 85% 12%, rgba(255,255,255,0.05), transparent 20%),
+            radial-gradient(circle at 50% 100%, rgba(255,255,255,0.06), transparent 30%),
+            linear-gradient(180deg, #060709 0%, #0a0d11 48%, #050608 100%);
+        color: var(--text-main);
+    }
+    [data-testid="stAppViewContainer"] > .main {
+        background: transparent;
+    }
+    [data-testid="stHeader"] {
+        background: rgba(5, 6, 8, 0.38);
+        backdrop-filter: blur(26px);
+        -webkit-backdrop-filter: blur(26px);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    [data-testid="stSidebar"] {
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025)),
+            rgba(8, 10, 14, 0.78);
+        border-right: 1px solid rgba(255,255,255,0.08);
+        box-shadow:
+            inset 0 1px 1px rgba(255,255,255,0.12),
+            18px 0 46px rgba(0,0,0,0.22);
+        backdrop-filter: blur(32px);
+        -webkit-backdrop-filter: blur(32px);
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        background: transparent;
+    }
+    [data-testid="stSidebar"] * {
+        color: var(--text-main) !important;
+    }
+    [data-testid="stSidebar"] hr,
+    .stMarkdown hr {
+        border-color: var(--line-soft);
+    }
     .main-header {
-        font-size: 2.2rem;
+        font-size: 2.5rem;
         font-weight: 700;
-        color: #1B4F72;
-        margin-bottom: 0;
+        letter-spacing: -0.03em;
+        color: var(--text-main);
+        margin-bottom: 0.25rem;
+        text-shadow: 0 0 24px rgba(255,255,255,0.12);
     }
     .sub-header {
         font-size: 1rem;
-        color: #666;
-        margin-top: -10px;
-        margin-bottom: 20px;
+        color: var(--text-muted);
+        margin-top: -8px;
+        margin-bottom: 22px;
+    }
+    .hero-shell {
+        position: relative;
+        overflow: hidden;
+        border-radius: 30px;
+        padding: 1.3rem 1.4rem 1.2rem 1.4rem;
+        margin-bottom: 1.15rem;
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
+            rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.14);
+        box-shadow:
+            0 24px 90px rgba(0,0,0,0.34),
+            inset 0 1px 1px rgba(255,255,255,0.15),
+            inset 0 -1px 1px rgba(0,0,0,0.20);
+        backdrop-filter: blur(32px);
+        -webkit-backdrop-filter: blur(32px);
+    }
+    .hero-shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.14), transparent 40%, transparent 70%, rgba(255,255,255,0.05));
+        pointer-events: none;
     }
     .alert-box {
-        background: #FDEDEC;
-        border-left: 4px solid #E74C3C;
+        background: rgba(255, 255, 255, 0.045);
+        border-left: 4px solid rgba(255, 122, 122, 0.95);
         padding: 12px 16px;
-        border-radius: 4px;
+        border-radius: 18px;
         margin: 8px 0;
+        box-shadow: var(--glass-shadow), var(--glass-highlight), var(--glass-lowlight);
+        backdrop-filter: blur(24px);
     }
     .safe-box {
-        background: #EAFAF1;
-        border-left: 4px solid #27AE60;
+        background: rgba(255, 255, 255, 0.045);
+        border-left: 4px solid rgba(182, 255, 209, 0.88);
         padding: 12px 16px;
-        border-radius: 4px;
+        border-radius: 18px;
         margin: 8px 0;
+        box-shadow: var(--glass-shadow), var(--glass-highlight), var(--glass-lowlight);
+        backdrop-filter: blur(24px);
     }
     .live-indicator {
         display: inline-block;
         width: 10px;
         height: 10px;
-        background: #E74C3C;
+        background: #ffffff;
         border-radius: 50%;
         margin-right: 6px;
+        box-shadow: 0 0 14px rgba(255,255,255,0.75);
         animation: blink 1s infinite;
     }
     @keyframes blink {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.3; }
     }
-    div[data-testid="stMetricValue"] { font-size: 1.8rem; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    div[data-testid="stMetricValue"] {
+        font-size: 2rem;
+        color: var(--text-main);
+        text-shadow: 0 0 16px rgba(255,255,255,0.08);
+    }
+    div[data-testid="stMetricLabel"],
+    div[data-testid="stMetricDelta"] {
+        color: var(--text-muted) !important;
+    }
+    [data-testid="stMetric"] {
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025)),
+            rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 24px;
+        padding: 1rem 1.1rem;
+        box-shadow:
+            0 18px 60px rgba(0,0,0,0.22),
+            inset 0 1px 1px rgba(255,255,255,0.14),
+            inset 0 -1px 1px rgba(0,0,0,0.18);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        transition: transform 220ms ease, box-shadow 220ms ease, background 220ms ease;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: scale(1.02);
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.035)),
+            rgba(255,255,255,0.03);
+        box-shadow:
+            0 24px 72px rgba(0,0,0,0.28),
+            inset 0 1px 1px rgba(255,255,255,0.16),
+            inset 0 -1px 1px rgba(0,0,0,0.22);
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 22px;
+        padding: 0.35rem;
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+    }
     .stTabs [data-baseweb="tab"] {
-        padding: 8px 20px;
+        height: auto;
+        padding: 10px 18px;
         font-weight: 600;
+        border-radius: 18px;
+        color: var(--text-muted);
+        transition: all 180ms ease;
+    }
+    .stTabs [aria-selected="true"] {
+        background: rgba(255,255,255,0.08) !important;
+        color: var(--text-main) !important;
+        box-shadow:
+            inset 0 1px 1px rgba(255,255,255,0.14),
+            0 10px 26px rgba(0,0,0,0.22);
+    }
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlockBorderWrapper"] {
+        background: transparent;
+    }
+    div[data-testid="stPlotlyChart"],
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"],
+    div[data-testid="stExpander"],
+    div[data-testid="stAlert"],
+    div[data-testid="stForm"],
+    div[data-testid="stMarkdownContainer"]:has(h3),
+    div[data-testid="stMarkdownContainer"]:has(h4) {
+        border-radius: 28px;
+    }
+    div[data-testid="stPlotlyChart"],
+    div[data-testid="stDataFrame"],
+    div[data-testid="stAlert"],
+    div[data-baseweb="select"],
+    div[data-testid="stMultiSelect"],
+    div[data-testid="stSlider"],
+    div[data-testid="stNumberInput"],
+    div[data-testid="stTextInput"],
+    div[data-testid="stButton"] > button,
+    div[data-testid="stDownloadButton"] > button {
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.022)),
+            rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        box-shadow:
+            0 18px 60px rgba(0,0,0,0.18),
+            inset 0 1px 1px rgba(255,255,255,0.12),
+            inset 0 -1px 1px rgba(0,0,0,0.18);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+    }
+    div[data-testid="stPlotlyChart"],
+    div[data-testid="stDataFrame"] {
+        padding: 0.7rem;
+    }
+    div[data-baseweb="select"] > div,
+    div[data-testid="stTextInput"] input,
+    textarea,
+    [data-baseweb="base-input"] {
+        background: rgba(255,255,255,0.02) !important;
+        color: var(--text-main) !important;
+    }
+    .stSlider [data-baseweb="slider"] > div > div {
+        background: linear-gradient(90deg, rgba(255,255,255,0.85), rgba(255,255,255,0.35)) !important;
+    }
+    .stSlider [role="slider"] {
+        background: #ffffff !important;
+        box-shadow: 0 0 18px rgba(255,255,255,0.55);
+    }
+    .stButton > button,
+    .stDownloadButton > button {
+        color: var(--text-main) !important;
+        border-radius: 18px !important;
+        min-height: 2.9rem;
+        transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+    .stButton > button:hover,
+    .stDownloadButton > button:hover {
+        transform: scale(1.02);
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03)),
+            rgba(255,255,255,0.03) !important;
+        box-shadow:
+            0 22px 70px rgba(0,0,0,0.26),
+            inset 0 1px 1px rgba(255,255,255,0.15),
+            inset 0 -1px 1px rgba(0,0,0,0.20);
+    }
+    .stButton > button:active,
+    .stDownloadButton > button:active {
+        transform: scale(0.98);
+    }
+    .stMarkdown, p, label, span, .stCaption, .stText, h1, h2, h3, h4 {
+        color: var(--text-main);
+    }
+    .stCaption {
+        color: var(--text-muted) !important;
+    }
+    [data-testid="stDataFrame"] * {
+        color: var(--text-main) !important;
+    }
+    .glass-divider {
+        height: 1px;
+        margin: 1rem 0 1.4rem;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
     }
 </style>
 """, unsafe_allow_html=True)
 
 
+def inject_liquid_spotlight() -> None:
+    """Inject a page-level liquid spotlight that follows the cursor."""
+    components.html(
+        """
+        <div id="vision-liquid-spotlight"></div>
+        <style>
+          #vision-liquid-spotlight {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 460px;
+            height: 460px;
+            border-radius: 999px;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0.58;
+            transform: translate3d(-9999px, -9999px, 0);
+            background:
+              radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 22%, rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.02) 52%, transparent 70%);
+            filter: blur(18px);
+            mix-blend-mode: screen;
+            will-change: transform;
+          }
+        </style>
+        <script>
+          const light = document.getElementById("vision-liquid-spotlight");
+          let targetX = window.innerWidth / 2;
+          let targetY = window.innerHeight / 3;
+          let currentX = targetX;
+          let currentY = targetY;
+          const render = () => {
+            currentX += (targetX - currentX) * 0.12;
+            currentY += (targetY - currentY) * 0.12;
+            light.style.transform = `translate3d(${currentX - 230}px, ${currentY - 230}px, 0)`;
+            requestAnimationFrame(render);
+          };
+          window.addEventListener("mousemove", (event) => {
+            targetX = event.clientX;
+            targetY = event.clientY;
+          }, { passive: true });
+          window.addEventListener("scroll", () => {
+            targetY = Math.min(window.innerHeight - 120, targetY);
+          }, { passive: true });
+          requestAnimationFrame(render);
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
+TRANSLATIONS = {
+    "tr": {
+        "subtitle": "Milli Akilli Sayac Sistemleri | Yapay Zeka Tabanli Anomali Tespit ve Kacak Elektrik Siniflandirma v2.0",
+        "sidebar_tagline": "Akilli Sayac Anomali Tespiti",
+        "appearance": "Gorunum",
+        "theme": "Tema",
+        "language": "Dil",
+        "theme_dark": "Siyah Cam",
+        "theme_light": "Beyaz Cam",
+        "filters": "Filtreler",
+        "customer_profile": "Musteri Profili",
+        "risk_band": "Risk Bandi",
+        "threshold": "Kacak Olasilik Esigi",
+        "shown": "Gosterilen",
+        "project_info": "Proje Bilgisi",
+        "total_customers": "Toplam Musteri",
+        "detected": "Tespit Edilen",
+        "urgent": "Acil",
+        "critical": "Kritik",
+        "estimated_loss": "Tahmini Aylik Kayip",
+        "field_team": "Saha ekibi",
+        "clean": "Temiz",
+        "regional_map": "Bolgesel Anomali Haritasi",
+        "risk_distribution": "Risk Seviyesi Dagilimi",
+        "prob_distribution": "Kacak Olasilik Dagilimi",
+        "risk_mix": "Risk Karmasi",
+        "alerts": "Anomali Alarmlari",
+        "no_alerts": "Secilen esik degerinde alarm bulunmuyor.",
+        "suspicion_alarm": "musteri icin kacak suphe alarmi",
+        "live_detector_alerts": "Canli Anomali Uyarilari",
+        "refresh": "Yenile",
+        "refresh_live_alerts": "Canli uyarilari yenile",
+        "new_critical_anomaly": "yeni KRITIK anomali",
+        "db_unavailable": "Veritabani kullanilamiyor",
+        "no_live_alert": "Henuz canli uyari yok.",
+        "open": "Ac",
+        "histogram_y_axis": "Musteri Sayisi",
+        "risk_mix_center": "Risk Karmasi",
+        "customer_id": "Musteri ID",
+        "anomaly_score": "Anomali Skoru",
+        "currency_symbol": "₺",
+        "id": "ID",
+        "profile": "Profil",
+        "probability": "Kacak Olasiligi",
+        "risk": "Risk",
+        "avg_consumption": "Ort. Tuketim",
+        "zero_pct": "Sifir %",
+        "sudden_change": "Ani Degisim",
+        "tab_overview": "Genel Bakis",
+        "tab_customers": "Musteri Listesi",
+        "tab_timeseries": "Zaman Serisi",
+        "tab_models": "Model Performansi",
+        "tab_detail": "Musteri Detay",
+        "tab_simulation": "Canli Simulasyon",
+        "tab_telemetry": "Canli Telemetri (DB)",
+        "telemetry_title": "Canli Telemetri - Son 100 Kayit (Postgres)",
+        "telemetry_refresh_help": "Yenileme ile son 100 kayit Postgres'ten cekilir.",
+        "telemetry_last_updated": "Son guncelleme",
+        "telemetry_total_records": "Toplam Kayit",
+        "telemetry_avg_voltage": "Ort. Voltaj (V)",
+        "telemetry_avg_current": "Ort. Akim (A)",
+        "telemetry_avg_power": "Ort. Guc (W)",
+        "telemetry_chart_title": "Aktif Guc (W) - Son 100 Olcum",
+        "telemetry_time_axis": "Zaman (UTC)",
+        "telemetry_power_axis": "Aktif Guc (W)",
+        "telemetry_time_col": "Zaman",
+        "telemetry_meter_col": "Sayac ID",
+        "telemetry_voltage_col": "Voltaj (V)",
+        "telemetry_current_col": "Akim (A)",
+        "telemetry_power_col": "Guc (W)",
+        "telemetry_no_data": "Henuz veri yok - gateway ve sensor_mock calisiyor mu?",
+        "telemetry_psycopg_missing": "psycopg2 kurulu degil. Canli telemetri icin su komutu calistir:",
+        "telemetry_db_error": "Postgres baglantisi kurulamadi",
+        "telemetry_db_help": "Kontrol et: `docker compose up -d mass-ai-db` calisiyor mu?",
+        "active_model": "Aktif Model",
+        "light_mode": "Acik Mod",
+        "dark_mode": "Koyu Mod",
+        "data_source": "Veri Kaynagi",
+        "data_source_sample": "Hazir Ornek Veri",
+        "data_source_external": "Dis CSV Dosyasi",
+        "external_csv_path": "CSV Dosya Yolu",
+        "external_csv_hint": "Ornek: C:\\Users\\...\\data_extracted\\data.csv",
+        "external_loaded": "Dis veri yuklendi",
+        "external_preview": "Onizleme musteri",
+        "external_load_error": "Dis veri yuklenemedi, hazir ornek veriye donuldu",
+        "external_missing_path": "Dis kaynak secili ama CSV yolu bos",
+        "external_csv_upload": "CSV Yukle (Klasorden Sec)",
+        "external_selected_file": "Secilen dosya",
+        "external_saved_path": "Kayit yolu",
+    },
+    "en": {
+        "subtitle": "National Smart Meter Systems | AI-Powered Anomaly Detection and Electricity Theft Classification v2.0",
+        "sidebar_tagline": "Smart Meter Anomaly Detection",
+        "appearance": "Appearance",
+        "theme": "Theme",
+        "language": "Language",
+        "theme_dark": "Black Glass",
+        "theme_light": "White Glass",
+        "filters": "Filters",
+        "customer_profile": "Customer Profile",
+        "risk_band": "Risk Band",
+        "threshold": "Theft Probability Threshold",
+        "shown": "Showing",
+        "project_info": "Project Info",
+        "total_customers": "Total Customers",
+        "detected": "Detected",
+        "urgent": "Urgent",
+        "critical": "Critical",
+        "estimated_loss": "Estimated Monthly Loss",
+        "field_team": "Field team",
+        "clean": "Clean",
+        "regional_map": "Regional Anomaly Map",
+        "risk_distribution": "Risk Distribution",
+        "prob_distribution": "Theft Probability Distribution",
+        "risk_mix": "Risk Mix",
+        "alerts": "Anomaly Alerts",
+        "no_alerts": "No alerts found for the selected threshold.",
+        "suspicion_alarm": "customers flagged for suspected theft",
+        "live_detector_alerts": "Live Detector Alerts",
+        "refresh": "Refresh",
+        "refresh_live_alerts": "Refresh live alerts",
+        "new_critical_anomaly": "new CRITICAL anomaly",
+        "db_unavailable": "Database unavailable",
+        "no_live_alert": "No live alert yet.",
+        "open": "Open",
+        "histogram_y_axis": "Customer Count",
+        "risk_mix_center": "Risk Mix",
+        "customer_id": "Customer ID",
+        "anomaly_score": "Anomaly Score",
+        "currency_symbol": "TRY",
+        "id": "ID",
+        "profile": "Profile",
+        "probability": "Theft Probability",
+        "risk": "Risk",
+        "avg_consumption": "Avg. Consumption",
+        "zero_pct": "Zero %",
+        "sudden_change": "Sudden Change",
+        "tab_overview": "Overview",
+        "tab_customers": "Customer List",
+        "tab_timeseries": "Time Series",
+        "tab_models": "Model Performance",
+        "tab_detail": "Customer Detail",
+        "tab_simulation": "Live Simulation",
+        "tab_telemetry": "Live Telemetry (DB)",
+        "telemetry_title": "Live Telemetry - Last 100 Records (Postgres)",
+        "telemetry_refresh_help": "Each refresh pulls the latest 100 records from Postgres.",
+        "telemetry_last_updated": "Last update",
+        "telemetry_total_records": "Total Records",
+        "telemetry_avg_voltage": "Avg. Voltage (V)",
+        "telemetry_avg_current": "Avg. Current (A)",
+        "telemetry_avg_power": "Avg. Power (W)",
+        "telemetry_chart_title": "Active Power (W) - Last 100 Samples",
+        "telemetry_time_axis": "Time (UTC)",
+        "telemetry_power_axis": "Active Power (W)",
+        "telemetry_time_col": "Time",
+        "telemetry_meter_col": "Meter ID",
+        "telemetry_voltage_col": "Voltage (V)",
+        "telemetry_current_col": "Current (A)",
+        "telemetry_power_col": "Power (W)",
+        "telemetry_no_data": "No data yet - are gateway and sensor_mock running?",
+        "telemetry_psycopg_missing": "psycopg2 is not installed. Run this command for live telemetry:",
+        "telemetry_db_error": "Postgres connection failed",
+        "telemetry_db_help": "Check: is `docker compose up -d mass-ai-db` running?",
+        "active_model": "Active Model",
+        "light_mode": "Light Mode",
+        "dark_mode": "Dark Mode",
+        "data_source": "Data Source",
+        "data_source_sample": "Built-in Sample",
+        "data_source_external": "External CSV",
+        "external_csv_path": "CSV File Path",
+        "external_csv_hint": "Example: C:\\Users\\...\\data_extracted\\data.csv",
+        "external_loaded": "External data loaded",
+        "external_preview": "Preview customers",
+        "external_load_error": "External data failed, switched back to built-in sample",
+        "external_missing_path": "External source selected but CSV path is empty",
+        "external_csv_upload": "Upload CSV (Choose from folder)",
+        "external_selected_file": "Selected file",
+        "external_saved_path": "Saved path",
+    },
+}
+
+
+def tr(key: str) -> str:
+    lang = st.session_state.get("ui_lang", "tr")
+    return TRANSLATIONS.get(lang, TRANSLATIONS["tr"]).get(key, key)
+
+
+def ensure_ui_state() -> None:
+    """Initialize persistent UI state once to avoid theme/language drift on reruns."""
+    if "ui_theme" not in st.session_state:
+        st.session_state["ui_theme"] = "light"
+    if "ui_lang" not in st.session_state:
+        st.session_state["ui_lang"] = "tr"
+    if "data_source" not in st.session_state:
+        st.session_state["data_source"] = "sample"
+    if "external_csv_path" not in st.session_state:
+        default_external = os.path.join(
+            os.path.expanduser("~"),
+            "OneDrive",
+            "Desktop",
+            "Electric Theft Data",
+            "data_extracted",
+            "data.csv",
+        )
+        st.session_state["external_csv_path"] = default_external if os.path.exists(default_external) else ""
+    if "external_upload_sig" not in st.session_state:
+        st.session_state["external_upload_sig"] = ""
+
+
+def canonical_risk(value: str) -> str:
+    text = str(value)
+    if any(token in text for token in ["Düs", "Düş", "Dus", "DÃ¼", "Low"]):
+        return "low"
+    if any(token in text for token in ["Yük", "Yuk", "YÃ¼", "High"]):
+        return "high"
+    if any(token in text for token in ["Krit", "Crit"]):
+        return "critical"
+    if any(token in text for token in ["Acil", "Urg"]):
+        return "urgent"
+    return "medium"
+
+
+def risk_label(value: str) -> str:
+    labels = {
+        "tr": {"low": "Dusuk", "medium": "Orta", "high": "Yuksek", "critical": "Kritik", "urgent": "Acil"},
+        "en": {"low": "Low", "medium": "Medium", "high": "High", "critical": "Critical", "urgent": "Urgent"},
+    }
+    return labels.get(st.session_state.get("ui_lang", "tr"), labels["tr"])[canonical_risk(value)]
+
+
+def profile_label(value: str) -> str:
+    labels = {
+        "tr": {"residential": "Konut", "commercial": "Ticari", "industrial": "Sanayi"},
+        "en": {"residential": "Residential", "commercial": "Commercial", "industrial": "Industrial"},
+    }
+    return labels.get(st.session_state.get("ui_lang", "tr"), labels["tr"]).get(value, str(value))
+
+
+def inject_theme_overrides(theme: str) -> None:
+    if theme == "light":
+        css = """
+        <style>
+            :root {
+                --glass-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+                --glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.82);
+                --glass-lowlight: inset 0 -1px 1px rgba(15, 23, 42, 0.08);
+                --text-main: #101418;
+                --text-muted: rgba(16, 20, 24, 0.58);
+                --line-soft: rgba(16, 20, 24, 0.09);
+            }
+            html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+                background:
+                    radial-gradient(circle at 12% 18%, rgba(255,255,255,0.95), transparent 25%),
+                    radial-gradient(circle at 88% 10%, rgba(255,255,255,0.72), transparent 22%),
+                    linear-gradient(180deg, #f8fafc 0%, #edf2f7 48%, #e8edf3 100%) !important;
+            }
+            [data-testid="stHeader"] {
+                background: rgba(255,255,255,0.45) !important;
+                border-bottom: 1px solid rgba(15,23,42,0.08) !important;
+            }
+            [data-testid="stSidebar"] {
+                background:
+                    linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.62)),
+                    rgba(255,255,255,0.65) !important;
+                border-right: 1px solid rgba(15,23,42,0.08) !important;
+                box-shadow: inset 0 1px 1px rgba(255,255,255,0.75), 18px 0 46px rgba(15,23,42,0.08) !important;
+            }
+            [data-testid="stPlotlyChart"],
+            [data-testid="stDataFrame"],
+            [data-testid="stAlert"],
+            [data-testid="stMetric"],
+            div[data-baseweb="select"],
+            div[data-testid="stMultiSelect"],
+            div[data-testid="stSlider"],
+            div[data-testid="stTextInput"],
+            div[data-testid="stFileUploader"],
+            [data-testid="stFileUploaderDropzone"],
+            div[data-testid="stButton"] > button,
+            div[data-testid="stDownloadButton"] > button,
+            .hero-shell,
+            .alert-box,
+            .safe-box {
+                background:
+                    linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.58)),
+                    rgba(255,255,255,0.56) !important;
+                border-color: rgba(15,23,42,0.08) !important;
+                box-shadow:
+                    0 16px 42px rgba(15,23,42,0.08),
+                    inset 0 1px 1px rgba(255,255,255,0.92),
+                    inset 0 -1px 1px rgba(15,23,42,0.06) !important;
+            }
+            div[data-testid="stTextInput"] input,
+            [data-baseweb="base-input"] input,
+            [data-baseweb="base-input"] {
+                background: rgba(255,255,255,0.94) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+                border-color: rgba(15,23,42,0.16) !important;
+            }
+            div[data-testid="stTextInput"] input::placeholder,
+            [data-baseweb="base-input"] input::placeholder {
+                color: rgba(15,23,42,0.45) !important;
+            }
+            [data-testid="stFileUploaderDropzone"] * {
+                color: #0f172a !important;
+            }
+            .stSlider [data-baseweb="slider"] > div > div {
+                background: linear-gradient(90deg, rgba(15,23,42,0.92), rgba(15,23,42,0.40)) !important;
+            }
+            .stSlider [role="slider"] {
+                background: #0f172a !important;
+                box-shadow: 0 0 14px rgba(15,23,42,0.24) !important;
+            }
+            #vision-liquid-spotlight {
+                opacity: 0.34 !important;
+                background:
+                    radial-gradient(circle, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.52) 24%, rgba(255,255,255,0.18) 42%, transparent 70%) !important;
+                mix-blend-mode: soft-light !important;
+            }
+        </style>
+        """
+    else:
+        css = """
+        <style>
+            #vision-liquid-spotlight {
+                opacity: 0.58;
+                background:
+                    radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 22%, rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.02) 52%, transparent 70%);
+                mix-blend-mode: screen;
+            }
+        </style>
+        """
+    st.markdown(css, unsafe_allow_html=True)
+
+
+def apply_plotly_theme(fig: go.Figure, theme: str) -> go.Figure:
+    if theme == "light":
+        fig.update_layout(
+            paper_bgcolor="rgba(255,255,255,0.72)",
+            plot_bgcolor="rgba(255,255,255,0.18)",
+            font=dict(color="#101418"),
+            legend=dict(bgcolor="rgba(255,255,255,0.0)", font=dict(color="#101418")),
+        )
+    else:
+        fig.update_layout(
+            paper_bgcolor="rgba(10,13,17,0.55)",
+            plot_bgcolor="rgba(255,255,255,0.015)",
+            font=dict(color="#f5f7fb"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#f5f7fb")),
+        )
+    return fig
+
+
 # ========== VERI YUKLEME ==========
+def _pick_column(columns, candidates):
+    lower_map = {str(col).lower(): col for col in columns}
+    for candidate in candidates:
+        key = candidate.lower()
+        if key in lower_map:
+            return lower_map[key]
+    return None
+
+
+def _date_columns_from_dataframe(df: pd.DataFrame, skip_cols=None):
+    skip = set(skip_cols or [])
+    parsed = {}
+    for col in df.columns:
+        if col in skip:
+            continue
+        ts = pd.to_datetime(str(col), errors="coerce")
+        if pd.notna(ts):
+            parsed[col] = ts
+    ordered = sorted(parsed.keys(), key=lambda c: parsed[c])
+    return ordered, parsed
+
+
+def _load_sample_data():
+    base = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
+    features = pd.read_csv(os.path.join(base, "features.csv"))
+    raw = pd.read_csv(os.path.join(base, "raw_consumption_sample.csv"))
+    raw["timestamp"] = pd.to_datetime(raw["timestamp"])
+    meta = {
+        "source": "sample",
+        "rows": int(len(features)),
+        "raw_customers": int(raw["customer_id"].nunique()) if "customer_id" in raw.columns else 0,
+    }
+    return features, raw, meta
+
+
+def _build_external_dataset(csv_path: str):
+    ext_df = pd.read_csv(csv_path)
+
+    id_col = _pick_column(ext_df.columns, ["CONS_NO", "customer_id", "meter_id", "id"])
+    label_col = _pick_column(ext_df.columns, ["FLAG", "label", "target", "is_theft", "is_fraud"])
+
+    if id_col is None:
+        raise ValueError("ID column not found. Expected one of: CONS_NO, customer_id, meter_id, id")
+
+    date_cols, parsed_dates = _date_columns_from_dataframe(ext_df, skip_cols=[id_col, label_col] if label_col else [id_col])
+    if len(date_cols) < 30:
+        raise ValueError("Date-like columns not found. Expected wide time-series columns like 2014/1/1, 2014/1/2, ...")
+
+    work = ext_df[[id_col] + ([label_col] if label_col else []) + date_cols].copy()
+    work = work.sample(frac=1.0, random_state=42).reset_index(drop=True)
+
+    source_ids = work[id_col].astype(str)
+    source_ids = source_ids.replace({"nan": "", "None": ""})
+    missing_mask = source_ids.str.len() == 0
+    if missing_mask.any():
+        source_ids.loc[missing_mask] = [f"row_{idx}" for idx in source_ids[missing_mask].index]
+
+    daily = work[date_cols].apply(pd.to_numeric, errors="coerce")
+    valid_rows = daily.notna().sum(axis=1) > 0
+    if not valid_rows.all():
+        work = work.loc[valid_rows].reset_index(drop=True)
+        daily = daily.loc[valid_rows].reset_index(drop=True)
+        source_ids = source_ids.loc[valid_rows].reset_index(drop=True)
+    if len(work) == 0:
+        raise ValueError("No usable consumption rows found in CSV.")
+
+    arr = daily.to_numpy(dtype=np.float32)
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean_consumption = np.nanmean(arr, axis=1)
+        std_consumption = np.nanstd(arr, axis=1)
+        min_consumption = np.nanmin(arr, axis=1)
+        max_consumption = np.nanmax(arr, axis=1)
+        median_consumption = np.nanmedian(arr, axis=1)
+        q25 = np.nanpercentile(arr, 25, axis=1)
+        q75 = np.nanpercentile(arr, 75, axis=1)
+
+    mean_consumption = np.nan_to_num(mean_consumption, nan=0.0)
+    std_consumption = np.nan_to_num(std_consumption, nan=0.0)
+    min_consumption = np.nan_to_num(min_consumption, nan=0.0)
+    max_consumption = np.nan_to_num(max_consumption, nan=0.0)
+    median_consumption = np.nan_to_num(median_consumption, nan=0.0)
+    q25 = np.nan_to_num(q25, nan=0.0)
+    q75 = np.nan_to_num(q75, nan=0.0)
+    iqr = q75 - q25
+
+    skewness = daily.skew(axis=1, numeric_only=True).fillna(0.0).to_numpy(dtype=np.float32)
+    kurtosis = daily.kurt(axis=1, numeric_only=True).fillna(0.0).to_numpy(dtype=np.float32)
+
+    with np.errstate(invalid="ignore"):
+        zero_measurement_pct = np.nanmean((arr <= 1e-4).astype(np.float32), axis=1)
+    zero_measurement_pct = np.nan_to_num(zero_measurement_pct, nan=0.0)
+    zero_day_pct = zero_measurement_pct.copy()
+
+    filled = np.where(np.isnan(arr), np.nanmedian(arr, axis=1, keepdims=True), arr)
+    filled = np.nan_to_num(filled, nan=0.0)
+
+    if filled.shape[1] > 1:
+        diffs = np.abs(np.diff(filled, axis=1))
+        with np.errstate(invalid="ignore", divide="ignore"):
+            sudden_change_ratio = np.nanmean(diffs, axis=1) / (np.abs(mean_consumption) + 1e-6)
+        sudden_change_ratio = np.clip(np.nan_to_num(sudden_change_ratio, nan=0.0), 0.0, 1.0)
+    else:
+        sudden_change_ratio = np.zeros(len(filled), dtype=np.float32)
+
+    x = np.arange(filled.shape[1], dtype=np.float32)
+    x_centered = x - x.mean()
+    denom = float((x_centered ** 2).sum()) + 1e-8
+    trend_slope = (filled @ x_centered) / denom
+    trend_slope = np.nan_to_num(trend_slope, nan=0.0, posinf=0.0, neginf=0.0)
+
+    date_index = pd.DatetimeIndex([parsed_dates[c] for c in date_cols])
+    is_weekend = np.array([d.weekday() >= 5 for d in date_index], dtype=bool)
+    if is_weekend.any() and (~is_weekend).any():
+        weekend_mean = np.nanmean(arr[:, is_weekend], axis=1)
+        weekday_mean = np.nanmean(arr[:, ~is_weekend], axis=1)
+        weekend_weekday_ratio = np.nan_to_num(weekend_mean / (weekday_mean + 1e-6), nan=1.0, posinf=1.0, neginf=1.0)
+    else:
+        weekend_weekday_ratio = np.ones(len(arr), dtype=np.float32)
+
+    night_day_ratio = np.clip(1.0 + (zero_measurement_pct - np.nanmean(zero_measurement_pct)) * 2.0, 0.2, 3.5)
+    peak_hour = np.full(len(arr), 12.0, dtype=np.float32)
+    mean_daily_total = mean_consumption.copy()
+    std_daily_total = std_consumption.copy()
+    cv_daily = np.nan_to_num(std_daily_total / (mean_daily_total + 1e-6), nan=0.0, posinf=0.0, neginf=0.0)
+
+    if label_col:
+        labels = pd.to_numeric(work[label_col], errors="coerce").fillna(0).astype(int).to_numpy()
+        labels = (labels > 0).astype(int)
+    else:
+        labels = np.zeros(len(work), dtype=int)
+
+    q_33 = np.nanquantile(mean_consumption, 0.33) if len(mean_consumption) > 2 else np.nanmedian(mean_consumption)
+    q_66 = np.nanquantile(mean_consumption, 0.66) if len(mean_consumption) > 2 else np.nanmedian(mean_consumption)
+    profiles = np.where(
+        mean_consumption <= q_33,
+        "residential",
+        np.where(mean_consumption <= q_66, "commercial", "industrial"),
+    )
+
+    theft_types = np.array(["constant_reduction", "night_zeroing", "random_zeros", "gradual_decrease", "peak_clipping"])
+    theft_type_values = np.full(len(labels), "none", dtype=object)
+    pos_idx = np.where(labels == 1)[0]
+    if len(pos_idx) > 0:
+        theft_type_values[pos_idx] = theft_types[np.mod(np.arange(len(pos_idx)), len(theft_types))]
+
+    features = pd.DataFrame(
+        {
+            "customer_id": np.arange(len(work), dtype=int),
+            "profile": profiles,
+            "label": labels.astype(int),
+            "theft_type": theft_type_values,
+            "source_customer_ref": source_ids.values,
+            "mean_consumption": mean_consumption,
+            "std_consumption": std_consumption,
+            "min_consumption": min_consumption,
+            "max_consumption": max_consumption,
+            "median_consumption": median_consumption,
+            "skewness": skewness,
+            "kurtosis": kurtosis,
+            "mean_daily_total": mean_daily_total,
+            "std_daily_total": std_daily_total,
+            "cv_daily": cv_daily,
+            "night_day_ratio": night_day_ratio,
+            "weekend_weekday_ratio": weekend_weekday_ratio,
+            "peak_hour": peak_hour,
+            "zero_measurement_pct": zero_measurement_pct,
+            "zero_day_pct": zero_day_pct,
+            "sudden_change_ratio": sudden_change_ratio,
+            "trend_slope": trend_slope,
+            "q25": q25,
+            "q75": q75,
+            "iqr": iqr,
+        }
+    )
+
+    numeric_cols = features.select_dtypes(include=[np.number]).columns
+    features[numeric_cols] = features[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    raw_customer_limit = min(260, len(work))
+    raw_slice = work.iloc[:raw_customer_limit][[id_col] + date_cols].copy()
+    raw_long = raw_slice.melt(id_vars=[id_col], var_name="timestamp", value_name="consumption_kw")
+    raw_long["timestamp"] = pd.to_datetime(raw_long["timestamp"], errors="coerce")
+    raw_long["consumption_kw"] = pd.to_numeric(raw_long["consumption_kw"], errors="coerce")
+    raw_long = raw_long.dropna(subset=["timestamp", "consumption_kw"])
+
+    id_map = dict(zip(source_ids.astype(str), features["customer_id"]))
+    raw_long["customer_id"] = raw_long[id_col].astype(str).map(id_map)
+    raw_long = raw_long.dropna(subset=["customer_id"])
+    raw_long["customer_id"] = raw_long["customer_id"].astype(int)
+    label_map = features.set_index("customer_id")["label"].to_dict()
+    raw_long["label"] = raw_long["customer_id"].map(label_map).fillna(0).astype(int)
+    raw = raw_long[["customer_id", "timestamp", "consumption_kw", "label"]].sort_values(["customer_id", "timestamp"])
+
+    meta = {
+        "source": "external",
+        "rows": int(len(features)),
+        "raw_customers": int(raw_customer_limit),
+        "path": csv_path,
+        "id_col": id_col,
+        "label_col": label_col or "N/A",
+        "date_cols": int(len(date_cols)),
+    }
+    return features, raw, meta
+
+
 @st.cache_data
-def load_data():
-    base = os.path.join(os.path.dirname(__file__), '..', 'data', 'processed')
-    features = pd.read_csv(os.path.join(base, 'features.csv'))
-    raw = pd.read_csv(os.path.join(base, 'raw_consumption_sample.csv'))
-    raw['timestamp'] = pd.to_datetime(raw['timestamp'])
-    return features, raw
+def load_data(source: str = "sample", external_csv_path: str = ""):
+    if source == "external":
+        path = (external_csv_path or "").strip()
+        if not path:
+            raise ValueError("External CSV path is empty.")
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"CSV file not found: {path}")
+        return _build_external_dataset(path)
+
+    return _load_sample_data()
 
 
 @st.cache_data
@@ -104,142 +1131,308 @@ def run_models(features_df):
     from sklearn.ensemble import IsolationForest, RandomForestClassifier
     from sklearn.preprocessing import StandardScaler
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import (roc_curve, precision_recall_curve, confusion_matrix,
-                                 roc_auc_score, f1_score, classification_report)
+    from sklearn.metrics import roc_curve, precision_recall_curve, confusion_matrix, roc_auc_score, f1_score
 
-    meta_cols = ['customer_id', 'profile', 'label', 'theft_type']
+    def safe_roc_curve(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return np.array([0.0, 1.0]), np.array([0.0, 1.0]), np.array([1.0, 0.0])
+        return roc_curve(y_true, y_score)
+
+    def safe_pr_curve(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return np.array([1.0, 0.0]), np.array([0.0, 1.0]), np.array([0.5])
+        return precision_recall_curve(y_true, y_score)
+
+    def safe_auc(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return 0.5
+        return roc_auc_score(y_true, y_score)
+
+    features_df = features_df.copy()
+    meta_cols = ["customer_id", "profile", "label", "theft_type", "source_customer_ref"]
     feature_cols = [c for c in features_df.columns if c not in meta_cols]
-    X = features_df[feature_cols].values
-    y = features_df['label'].values
+    features_df[feature_cols] = (
+        features_df[feature_cols]
+        .apply(pd.to_numeric, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+    )
+
+    X = features_df[feature_cols].to_numpy(dtype=np.float32)
+    y = pd.to_numeric(features_df["label"], errors="coerce").fillna(0).astype(int).to_numpy()
+    y = (y > 0).astype(int)
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
+    class_counts = pd.Series(y).value_counts()
+    stratify_y = y if (len(class_counts) > 1 and class_counts.min() >= 2) else None
     X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
-        X_scaled, y, np.arange(len(y)), test_size=0.25, random_state=42, stratify=y
+        X_scaled, y, np.arange(len(y)), test_size=0.25, random_state=42, stratify=stratify_y
     )
 
-    # Isolation Forest
-    iso = IsolationForest(n_estimators=200, contamination=0.12, random_state=42)
+    iso_contamination = min(0.12, max(0.01, float(np.mean(y)) if len(y) else 0.01))
+    iso = IsolationForest(n_estimators=200, contamination=iso_contamination, random_state=42)
     iso.fit(X_scaled)
     iso_scores = -iso.score_samples(X_scaled)
     iso_preds_all = (iso.predict(X_scaled) == -1).astype(int)
-
-    # Random Forest
-    rf = RandomForestClassifier(n_estimators=200, max_depth=8, class_weight='balanced', random_state=42)
-    rf.fit(X_train, y_train)
-    rf_probs_all = rf.predict_proba(X_scaled)[:, 1]
-    rf_preds_all = rf.predict(X_scaled)
-
-    # Test seti metrikleri
-    rf_probs_test = rf.predict_proba(X_test)[:, 1]
-    rf_preds_test = rf.predict(X_test)
     iso_scores_test = -iso.score_samples(X_test)
     iso_preds_test = (iso.predict(X_test) == -1).astype(int)
 
-    # ROC curves
-    rf_fpr, rf_tpr, _ = roc_curve(y_test, rf_probs_test)
-    iso_fpr, iso_tpr, _ = roc_curve(y_test, iso_scores_test)
+    can_train_supervised = len(np.unique(y_train)) > 1
+    if can_train_supervised:
+        rf = RandomForestClassifier(n_estimators=200, max_depth=8, class_weight="balanced", random_state=42)
+        rf.fit(X_train, y_train)
+        rf_probs_all = rf.predict_proba(X_scaled)[:, 1]
+        rf_probs_test = rf.predict_proba(X_test)[:, 1]
+        rf_preds_all = rf.predict(X_scaled)
+        rf_preds_test = rf.predict(X_test)
+        importance = dict(zip(feature_cols, rf.feature_importances_))
+    else:
+        iso_min = float(np.min(iso_scores))
+        iso_span = float(np.max(iso_scores) - iso_min) + 1e-8
+        rf_probs_all = (iso_scores - iso_min) / iso_span
+        rf_probs_test = rf_probs_all[idx_test]
+        rf_preds_all = (rf_probs_all >= 0.5).astype(int)
+        rf_preds_test = rf_preds_all[idx_test]
+        importance = {name: 0.0 for name in feature_cols}
 
-    # PR curves
-    rf_prec, rf_rec, _ = precision_recall_curve(y_test, rf_probs_test)
-    iso_prec, iso_rec, _ = precision_recall_curve(y_test, iso_scores_test)
+    rf_fpr, rf_tpr, _ = safe_roc_curve(y_test, rf_probs_test)
+    iso_fpr, iso_tpr, _ = safe_roc_curve(y_test, iso_scores_test)
+    rf_prec, rf_rec, _ = safe_pr_curve(y_test, rf_probs_test)
+    iso_prec, iso_rec, _ = safe_pr_curve(y_test, iso_scores_test)
 
-    # Confusion matrices
-    rf_cm = confusion_matrix(y_test, rf_preds_test)
-    iso_cm = confusion_matrix(y_test, iso_preds_test)
+    rf_cm = confusion_matrix(y_test, rf_preds_test, labels=[0, 1])
+    iso_cm = confusion_matrix(y_test, iso_preds_test, labels=[0, 1])
 
-    # AUC & F1
-    rf_auc = roc_auc_score(y_test, rf_probs_test)
-    iso_auc = roc_auc_score(y_test, iso_scores_test)
-    rf_f1 = f1_score(y_test, rf_preds_test)
-    iso_f1 = f1_score(y_test, iso_preds_test)
+    rf_auc = safe_auc(y_test, rf_probs_test)
+    iso_auc = safe_auc(y_test, iso_scores_test)
+    rf_f1 = f1_score(y_test, rf_preds_test, zero_division=0)
+    iso_f1 = f1_score(y_test, iso_preds_test, zero_division=0)
 
-    # Feature importance
-    importance = dict(zip(feature_cols, rf.feature_importances_))
+    xgb_probs_all = None
+    xgb_auc = 0.0
+    xgb_f1 = 0.0
+    xgb_fpr = np.array([])
+    xgb_tpr = np.array([])
+    primary_probs = rf_probs_all
+    best_model_name = f"Random Forest (AUC {rf_auc:.3f})"
 
-    features_df = features_df.copy()
-    features_df['anomaly_score'] = iso_scores
-    features_df['theft_probability'] = rf_probs_all
-    features_df['predicted_theft'] = rf_preds_all
-    features_df['risk_level'] = pd.cut(
+    if can_train_supervised:
+        try:
+            from xgboost import XGBClassifier
+
+            neg, pos = (y_train == 0).sum(), (y_train == 1).sum()
+            xgb = XGBClassifier(
+                n_estimators=180,
+                max_depth=5,
+                learning_rate=0.05,
+                scale_pos_weight=neg / max(pos, 1),
+                eval_metric="logloss",
+                random_state=42,
+                verbosity=0,
+            )
+            xgb.fit(X_train, y_train)
+            xgb_probs_all = xgb.predict_proba(X_scaled)[:, 1]
+            xgb_probs_test = xgb.predict_proba(X_test)[:, 1]
+            xgb_preds_test = xgb.predict(X_test)
+            xgb_auc = safe_auc(y_test, xgb_probs_test)
+            xgb_f1 = f1_score(y_test, xgb_preds_test, zero_division=0)
+            xgb_fpr, xgb_tpr, _ = safe_roc_curve(y_test, xgb_probs_test)
+            if xgb_auc > rf_auc:
+                primary_probs = xgb_probs_all
+                best_model_name = f"XGBoost (AUC {xgb_auc:.3f})"
+        except Exception:
+            pass
+
+    features_df["anomaly_score"] = iso_scores
+    features_df["theft_probability"] = primary_probs
+    features_df["predicted_theft"] = (primary_probs >= 0.5).astype(int)
+
+    # 5-tier risk band (desktop uygulamasıyla aynı eşikler)
+    features_df['risk_band'] = pd.cut(
         features_df['theft_probability'],
-        bins=[0, 0.3, 0.6, 0.85, 1.0],
-        labels=['Dusuk', 'Orta', 'Yuksek', 'Kritik']
+        bins=[-0.001, 0.30, 0.45, 0.70, 0.85, 1.001],
+        labels=['Düşük', 'Orta', 'Yüksek', 'Kritik', 'Acil']
+    )
+    # Risk Score 0-100
+    features_df['risk_score'] = (features_df['theft_probability'] * 100).round(1)
+
+    # Tahmini aylık kayıp (TRY)
+    tariff = features_df['profile'].map(
+        {'residential': 2.28, 'commercial': 2.85, 'industrial': 1.92}
+    ).fillna(2.15)
+    base_loss = features_df.get('mean_consumption', pd.Series(np.ones(len(features_df)) * 10.0))
+    features_df['est_monthly_loss'] = np.where(
+        features_df['theft_probability'] >= 0.5,
+        (base_loss * 30 * tariff * features_df['theft_probability']).round(0),
+        0.0
     )
 
+    # Eski risk_level uyumluluk için tut
+    features_df["risk_level"] = features_df["risk_band"]
+
     metrics = {
-        'rf_fpr': rf_fpr, 'rf_tpr': rf_tpr, 'rf_auc': rf_auc, 'rf_f1': rf_f1, 'rf_cm': rf_cm,
-        'iso_fpr': iso_fpr, 'iso_tpr': iso_tpr, 'iso_auc': iso_auc, 'iso_f1': iso_f1, 'iso_cm': iso_cm,
-        'rf_prec': rf_prec, 'rf_rec': rf_rec, 'iso_prec': iso_prec, 'iso_rec': iso_rec,
-        'importance': importance, 'feature_cols': feature_cols,
-        'y_test': y_test, 'rf_probs_test': rf_probs_test, 'iso_scores_test': iso_scores_test,
+        "rf_fpr": rf_fpr,
+        "rf_tpr": rf_tpr,
+        "rf_auc": rf_auc,
+        "rf_f1": rf_f1,
+        "rf_cm": rf_cm,
+        "iso_fpr": iso_fpr,
+        "iso_tpr": iso_tpr,
+        "iso_auc": iso_auc,
+        "iso_f1": iso_f1,
+        "iso_cm": iso_cm,
+        "rf_prec": rf_prec,
+        "rf_rec": rf_rec,
+        "iso_prec": iso_prec,
+        "iso_rec": iso_rec,
+        "importance": importance,
+        "feature_cols": feature_cols,
+        "y_test": y_test,
+        "rf_probs_test": rf_probs_test,
+        "iso_scores_test": iso_scores_test,
+        "xgb_fpr": xgb_fpr,
+        "xgb_tpr": xgb_tpr,
+        "xgb_auc": xgb_auc,
+        "xgb_f1": xgb_f1,
+        "best_model": best_model_name,
     }
 
     return features_df, metrics
 
 
 # ========== SIDEBAR ==========
-def render_sidebar(features_df):
-    st.sidebar.markdown("## ⚡ MASS-AI v2.0")
-    st.sidebar.markdown("*Akilli Sayac Anomali Tespiti*")
+def render_sidebar(features_df, data_meta):
+    ensure_ui_state()
+
+    st.sidebar.markdown("## MASS-AI v2.0")
+    st.sidebar.markdown(f"*{tr('sidebar_tagline')}*")
     st.sidebar.markdown("---")
 
-    st.sidebar.markdown("### Filtreler")
+    st.sidebar.markdown(f"### {tr('appearance')}")
+    st.sidebar.selectbox(
+        tr("theme"),
+        options=["dark", "light"],
+        format_func=lambda x: tr("theme_dark") if x == "dark" else tr("theme_light"),
+        key="ui_theme",
+    )
+    st.sidebar.selectbox(
+        tr("language"),
+        options=["tr", "en"],
+        format_func=lambda x: "Turkce" if x == "tr" else "English",
+        key="ui_lang",
+    )
+    st.sidebar.markdown("---")
+
+    st.sidebar.markdown(f"### {tr('data_source')}")
+    st.sidebar.selectbox(
+        tr("data_source"),
+        options=["sample", "external"],
+        format_func=lambda x: tr("data_source_sample") if x == "sample" else tr("data_source_external"),
+        key="data_source",
+    )
+    if st.session_state.get("data_source") == "external":
+        external_path_input = st.sidebar.text_input(
+            tr("external_csv_path"),
+            value=st.session_state.get("external_csv_path", ""),
+        )
+        if st.session_state.get("external_csv_path") != external_path_input:
+            st.session_state["external_csv_path"] = external_path_input
+        st.sidebar.caption(tr("external_csv_hint"))
+        uploaded_csv = st.sidebar.file_uploader(
+            tr("external_csv_upload"),
+            type=["csv"],
+            accept_multiple_files=False,
+            key="external_csv_upload_widget",
+        )
+        if uploaded_csv is not None:
+            uploads_dir = os.path.join(os.path.dirname(__file__), "..", "data", "uploads")
+            os.makedirs(uploads_dir, exist_ok=True)
+            safe_name = os.path.basename(uploaded_csv.name) or "external_upload.csv"
+            target_path = os.path.join(uploads_dir, safe_name)
+            upload_sig = f"{safe_name}:{uploaded_csv.size}"
+
+            if st.session_state.get("external_upload_sig") != upload_sig or not os.path.exists(target_path):
+                with open(target_path, "wb") as fout:
+                    fout.write(uploaded_csv.getbuffer())
+                st.session_state["external_upload_sig"] = upload_sig
+
+            st.sidebar.caption(f"{tr('external_selected_file')}: {safe_name}")
+            st.sidebar.caption(f"{tr('external_saved_path')}: {target_path}")
+            if st.session_state.get("external_csv_path") != target_path:
+                st.session_state["external_csv_path"] = target_path
+                st.rerun()
+    if data_meta.get("source") == "external":
+        st.sidebar.caption(
+            f"{tr('external_loaded')}: {data_meta.get('rows', 0):,} | "
+            f"{tr('external_preview')}: {data_meta.get('raw_customers', 0)}"
+        )
+    st.sidebar.markdown("---")
+
+    st.sidebar.markdown(f"### {tr('filters')}")
     profile_filter = st.sidebar.multiselect(
-        "Musteri Profili",
-        options=['residential', 'commercial', 'industrial'],
-        default=['residential', 'commercial', 'industrial'],
-        format_func=lambda x: {'residential': '🏠 Konut', 'commercial': '🏢 Ticari', 'industrial': '🏭 Sanayi'}[x]
+        tr("customer_profile"),
+        options=["residential", "commercial", "industrial"],
+        default=["residential", "commercial", "industrial"],
+        format_func=profile_label,
     )
 
+    risk_options = sorted(
+        features_df["risk_band"].astype(str).unique().tolist(),
+        key=lambda item: ["low", "medium", "high", "critical", "urgent"].index(canonical_risk(item)),
+    )
     risk_filter = st.sidebar.multiselect(
-        "Risk Seviyesi",
-        options=['Dusuk', 'Orta', 'Yuksek', 'Kritik'],
-        default=['Dusuk', 'Orta', 'Yuksek', 'Kritik']
+        tr("risk_band"),
+        options=risk_options,
+        default=risk_options,
+        format_func=risk_label,
     )
 
-    prob_threshold = st.sidebar.slider("Kacak Olasilik Esigi", 0.0, 1.0, 0.5, 0.05)
+    prob_threshold = st.sidebar.slider(tr("threshold"), 0.0, 1.0, 0.5, 0.05)
 
     filtered = features_df[
-        (features_df['profile'].isin(profile_filter)) &
-        (features_df['risk_level'].isin(risk_filter))
+        (features_df["profile"].isin(profile_filter)) &
+        (features_df["risk_band"].isin(risk_filter))
     ]
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Gosterilen:** {len(filtered)} / {len(features_df)}")
+    st.sidebar.markdown(f"**{tr('shown')}:** {len(filtered)} / {len(features_df)}")
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Proje Bilgisi")
+    st.sidebar.markdown(f"### {tr('project_info')}")
     st.sidebar.markdown("**Omer Burak Kocak**")
-    st.sidebar.markdown("Marmara Uni. EEE — 2026")
+    st.sidebar.markdown("Marmara Uni. EEE | 2026")
 
     return filtered, prob_threshold
 
 
 # ========== TAB 1: GENEL BAKIS ==========
 def render_overview(df, threshold, raw_df):
-    # KPI Cards
+    theme = st.session_state.get("ui_theme", "dark")
+
     total = len(df)
-    detected = (df['theft_probability'] >= threshold).sum()
-    detection_rate = detected / total * 100
-    critical = (df['risk_level'] == 'Kritik').sum()
+    detected = (df["theft_probability"] >= threshold).sum()
+    detection_rate = detected / total * 100 if total else 0
+    urgent_count = (df["risk_band"].astype(str).apply(canonical_risk) == "urgent").sum()
+    critical_count = (df["risk_band"].astype(str).apply(canonical_risk) == "critical").sum()
+    monthly_loss = df["est_monthly_loss"].sum() if "est_monthly_loss" in df.columns else 0
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Toplam Musteri", f"{total:,}")
-    col2.metric("Tespit Edilen Anomali", f"{detected}", delta=f"%{detection_rate:.1f}", delta_color="inverse")
-    col3.metric("Ort. Anomali Skoru", f"{df['anomaly_score'].mean():.3f}")
-    col4.metric("Kritik Uyari", f"{critical}", delta="Acil" if critical > 0 else "Temiz", delta_color="inverse" if critical > 0 else "normal")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric(tr("total_customers"), f"{total:,}")
+    col2.metric(tr("detected"), f"{detected}", delta=f"%{detection_rate:.1f}", delta_color="inverse")
+    col3.metric(tr("urgent"), f"{urgent_count}", delta=tr("field_team") if urgent_count > 0 else tr("clean"), delta_color="inverse" if urgent_count > 0 else "normal")
+    col4.metric(tr("critical"), f"{critical_count}")
+    col5.metric(tr("estimated_loss"), f"{tr('currency_symbol')} {monthly_loss:,.0f}", delta_color="inverse")
 
-    st.markdown("---")
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown(f"### {tr('regional_map')}")
 
-    # Harita
-    st.markdown("### 🗺️ Bolgesel Anomali Haritasi")
     np.random.seed(42)
     cities = {
-        'Istanbul': (41.01, 28.97, 0.35), 'Ankara': (39.93, 32.86, 0.15),
-        'Izmir': (38.42, 27.14, 0.10), 'Diyarbakir': (37.91, 40.22, 0.10),
-        'Antalya': (36.90, 30.69, 0.08), 'Adana': (37.00, 35.32, 0.07),
-        'Bursa': (40.19, 29.06, 0.08), 'Gaziantep': (37.06, 37.38, 0.07),
+        "Istanbul": (41.01, 28.97, 0.35), "Ankara": (39.93, 32.86, 0.15),
+        "Izmir": (38.42, 27.14, 0.10), "Diyarbakir": (37.91, 40.22, 0.10),
+        "Antalya": (36.90, 30.69, 0.08), "Adana": (37.00, 35.32, 0.07),
+        "Bursa": (40.19, 29.06, 0.08), "Gaziantep": (37.06, 37.38, 0.07),
     }
     lats, lons, city_names = [], [], []
     for _ in range(len(df)):
@@ -250,468 +1443,770 @@ def render_overview(df, threshold, raw_df):
         city_names.append(city)
 
     map_df = df.copy()
-    map_df['lat'] = lats
-    map_df['lon'] = lons
-    map_df['city'] = city_names
+    map_df["lat"] = lats
+    map_df["lon"] = lons
+    map_df["city"] = city_names
+    map_df["profile_label"] = map_df["profile"].apply(profile_label)
+    map_df["risk_label"] = map_df["risk_level"].astype(str).apply(risk_label)
 
-    fig = px.scatter_mapbox(
-        map_df, lat='lat', lon='lon', color='theft_probability',
-        size='anomaly_score', color_continuous_scale='RdYlGn_r', range_color=[0, 1],
-        size_max=12, zoom=5, center={'lat': 39.0, 'lon': 35.0},
-        mapbox_style='carto-positron',
-        hover_data={'customer_id': True, 'profile': True, 'theft_probability': ':.2f', 'risk_level': True, 'lat': False, 'lon': False},
-        labels={'theft_probability': 'Kacak Olasiligi'}, height=450
+    map_scale = [
+        [0.0, "#27ae60"],
+        [0.25, "#7fcd6c"],
+        [0.5, "#f1c40f"],
+        [0.75, "#e67e22"],
+        [1.0, "#e74c3c"],
+    ]
+    map_fig = px.scatter_mapbox(
+        map_df,
+        lat="lat",
+        lon="lon",
+        color="theft_probability",
+        size="anomaly_score",
+        color_continuous_scale=map_scale,
+        range_color=[0, 1],
+        size_max=12,
+        zoom=5,
+        center={"lat": 39.0, "lon": 35.0},
+        mapbox_style="carto-positron" if theme == "light" else "carto-darkmatter",
+        hover_data={
+            "customer_id": True,
+            "anomaly_score": ":.3f",
+            "profile_label": True,
+            "theft_probability": ":.2f",
+            "risk_label": True,
+            "lat": False,
+            "lon": False,
+            "profile": False,
+            "risk_level": False,
+        },
+        labels={
+            "customer_id": tr("customer_id"),
+            "anomaly_score": tr("anomaly_score"),
+            "profile_label": tr("profile"),
+            "theft_probability": tr("probability"),
+            "risk_label": tr("risk"),
+        },
+        height=450,
     )
-    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-    st.plotly_chart(fig, use_container_width=True)
+    map_fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), coloraxis_colorbar=dict(title=tr("probability")))
+    apply_plotly_theme(map_fig, theme)
+    st.plotly_chart(map_fig, use_container_width=True)
 
-    st.markdown("---")
-
-    # Risk dagilimi
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
+
     with col1:
-        st.markdown("### 📊 Risk Seviyesi Dagilimi")
-        risk_counts = df['risk_level'].value_counts()
-        colors = {'Dusuk': '#27AE60', 'Orta': '#F39C12', 'Yuksek': '#E67E22', 'Kritik': '#E74C3C'}
-        fig = go.Figure(data=[go.Pie(
-            labels=risk_counts.index, values=risk_counts.values, hole=0.5,
-            marker_colors=[colors.get(r, '#999') for r in risk_counts.index],
-            textinfo='label+percent', textfont_size=13
-        )])
-        fig.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown(f"### {tr('risk_distribution')}")
+        risk_counts = df["risk_level"].astype(str).value_counts()
+        pie_labels = [risk_label(item) for item in risk_counts.index]
+        if theme == "light":
+            pie_colors = ["#27ae60", "#3498db", "#f1c40f", "#e67e22", "#e74c3c"]
+            center_fill = "rgba(255,255,255,0.76)"
+        else:
+            pie_colors = ["#2ecc71", "#5dade2", "#f4d03f", "#eb984e", "#ec7063"]
+            center_fill = "rgba(10,13,17,0.88)"
+        donut_fig = go.Figure(
+            data=[go.Pie(
+                labels=pie_labels,
+                values=risk_counts.values,
+                hole=0.58,
+                sort=False,
+                direction="clockwise",
+                marker=dict(colors=pie_colors[: len(risk_counts)], line=dict(color="rgba(255,255,255,0.08)", width=1.2)),
+                textinfo="label+percent",
+                textfont_size=13,
+                hovertemplate="%{label}: %{value} <extra></extra>",
+            )]
+        )
+        donut_fig.add_annotation(
+            text=tr("risk_mix"),
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=18, color="#101418" if theme == "light" else "#f5f7fb"),
+        )
+        donut_fig.add_shape(type="circle", xref="paper", yref="paper", x0=0.36, y0=0.36, x1=0.64, y1=0.64, fillcolor=center_fill, line=dict(color="rgba(255,255,255,0.06)", width=1))
+        donut_fig.update_layout(height=360, margin=dict(l=20, r=20, t=20, b=20), showlegend=False)
+        apply_plotly_theme(donut_fig, theme)
+        st.plotly_chart(donut_fig, use_container_width=True)
 
     with col2:
-        st.markdown("### 📈 Kacak Olasilik Dagilimi")
-        fig = go.Figure()
-        for profile, color in [('residential', '#1B4F72'), ('commercial', '#2E86C1'), ('industrial', '#85C1E9')]:
-            subset = df[df['profile'] == profile]
-            fig.add_trace(go.Histogram(
-                x=subset['theft_probability'],
-                name={'residential': 'Konut', 'commercial': 'Ticari', 'industrial': 'Sanayi'}[profile],
-                marker_color=color, opacity=0.7, nbinsx=30
+        st.markdown(f"### {tr('prob_distribution')}")
+        histogram_fig = go.Figure()
+        histogram_colors = {
+            "residential": "#4f46e5",
+            "commercial": "#06b6d4",
+            "industrial": "#f97316",
+        }
+        for profile in ["residential", "commercial", "industrial"]:
+            subset = df[df["profile"] == profile]
+            histogram_fig.add_trace(go.Histogram(
+                x=subset["theft_probability"],
+                name=profile_label(profile),
+                marker_color=histogram_colors[profile],
+                opacity=0.72,
+                nbinsx=30,
             ))
-        fig.update_layout(barmode='overlay', height=350,
-                         xaxis_title='Kacak Olasiligi', yaxis_title='Musteri Sayisi',
-                         margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig, use_container_width=True)
+        histogram_fig.update_layout(
+            barmode="overlay",
+            height=360,
+            xaxis_title=tr("probability"),
+            yaxis_title=tr("histogram_y_axis"),
+            margin=dict(l=20, r=20, t=20, b=20),
+        )
+        apply_plotly_theme(histogram_fig, theme)
+        st.plotly_chart(histogram_fig, use_container_width=True)
 
-    st.markdown("---")
-
-    # Alarm tablosu
-    st.markdown("### 🚨 Anomali Alarmlari")
-    alerts = df[df['theft_probability'] >= threshold].sort_values('theft_probability', ascending=False)
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown(f"### {tr('alerts')}")
+    alerts = df[df["theft_probability"] >= threshold].sort_values("theft_probability", ascending=False)
     if len(alerts) == 0:
-        st.success("Secilen esik degerinde alarm bulunmuyor.")
+        st.success(tr("no_alerts"))
     else:
-        st.warning(f"**{len(alerts)} musteri** icin kacak suphe alarmi (esik >= {threshold:.0%})")
-        display_df = alerts[['customer_id', 'profile', 'theft_probability', 'risk_level',
-                             'mean_consumption', 'zero_measurement_pct', 'sudden_change_ratio']].copy()
-        display_df.columns = ['ID', 'Profil', 'Kacak Olasiligi', 'Risk', 'Ort. Tuketim', 'Sifir %', 'Ani Degisim']
-        display_df['Kacak Olasiligi'] = display_df['Kacak Olasiligi'].apply(lambda x: f"{x:.1%}")
-        display_df['Sifir %'] = display_df['Sifir %'].apply(lambda x: f"{x:.1%}")
-        display_df['Ani Degisim'] = display_df['Ani Degisim'].apply(lambda x: f"{x:.4f}")
-        display_df['Ort. Tuketim'] = display_df['Ort. Tuketim'].apply(lambda x: f"{x:.2f} kW")
+        st.warning(f"**{len(alerts)}** {tr('suspicion_alarm')} (>= {threshold:.0%})")
+        display_df = alerts[["customer_id", "profile", "theft_probability", "risk_level", "mean_consumption", "zero_measurement_pct", "sudden_change_ratio"]].copy()
+        display_df.columns = [tr("id"), tr("profile"), tr("probability"), tr("risk"), tr("avg_consumption"), tr("zero_pct"), tr("sudden_change")]
+        display_df[tr("profile")] = display_df[tr("profile")].map(profile_label)
+        display_df[tr("risk")] = display_df[tr("risk")].map(risk_label)
+        display_df[tr("probability")] = display_df[tr("probability")].apply(lambda x: f"{x:.1%}")
+        display_df[tr("zero_pct")] = display_df[tr("zero_pct")].apply(lambda x: f"{x:.1%}")
+        display_df[tr("sudden_change")] = display_df[tr("sudden_change")].apply(lambda x: f"{x:.4f}")
+        display_df[tr("avg_consumption")] = display_df[tr("avg_consumption")].apply(lambda x: f"{x:.2f} kW")
         st.dataframe(display_df, use_container_width=True, height=350)
+
+    if _PSYCOPG2_AVAILABLE:
+        st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+        st.markdown(f"### {tr('live_detector_alerts')}")
+        col_alert, col_refresh = st.columns([5, 1])
+        with col_refresh:
+            do_refresh = st.button(tr("refresh"), key="alert_refresh", help=tr("refresh_live_alerts"))
+
+        if "db_alerts" not in st.session_state or do_refresh:
+            try:
+                prev_ids = set(st.session_state.get("db_alerts", pd.DataFrame()).get("id", pd.Series()).tolist())
+                st.session_state["db_alerts"] = fetch_alerts(limit=20)
+                st.session_state["db_alerts_ts"] = time.strftime("%H:%M:%S")
+                df_al = st.session_state["db_alerts"]
+                if not df_al.empty:
+                    new_rows = df_al[~df_al["id"].isin(prev_ids)]
+                    new_kritik = new_rows[new_rows["severity"] == "KRITIK"]
+                    if not new_kritik.empty:
+                        st.toast(f"{len(new_kritik)} {tr('new_critical_anomaly')}", icon="!")
+                        row = new_kritik.iloc[0]
+                        st.session_state["popup_meter"] = row["meter_id"]
+                        st.session_state["popup_score"] = row["anomaly_score"]
+                        st.session_state["popup_severity"] = row["severity"]
+                        st.session_state["popup_time"] = str(row["created_at"])
+            except Exception as exc:
+                st.session_state["db_alerts"] = pd.DataFrame()
+                st.caption(f"{tr('db_unavailable')}: {exc}")
+
+        if st.session_state.get("popup_meter"):
+            show_evidence_dialog(
+                st.session_state.pop("popup_meter"),
+                st.session_state.pop("popup_score"),
+                st.session_state.pop("popup_severity"),
+                st.session_state.pop("popup_time"),
+            )
+
+        df_al = st.session_state.get("db_alerts", pd.DataFrame())
+        last_al_ts = st.session_state.get("db_alerts_ts", "-")
+
+        if df_al.empty:
+            st.info(tr("no_live_alert"))
+        else:
+            kritik = df_al[df_al["severity"] == "KRITIK"]
+            if not kritik.empty:
+                st.error(f"**{len(kritik)} CRITICAL** | {last_al_ts}")
+            else:
+                st.warning(f"**{len(df_al)} alerts** | {last_al_ts}")
+
+            for _, row in df_al.iterrows():
+                c1, c2, c3, c4, c5 = st.columns([2, 2, 1, 1, 1])
+                c1.write(str(row["created_at"])[:19])
+                c2.write(row["meter_id"])
+                c3.write(f"{row['anomaly_score']:.3f}")
+                badge_color = "#111827" if theme == "light" else "#f3f4f6"
+                badge_text = "#ffffff" if theme == "light" else "#101418"
+                c4.markdown(
+                    f"<span style='background:{badge_color};color:{badge_text};padding:2px 8px;border-radius:999px;font-size:0.8rem'>{row['severity']}</span>",
+                    unsafe_allow_html=True,
+                )
+                if c5.button(tr("open"), key=f"ev_{row['id']}"):
+                    show_evidence_dialog(
+                        row["meter_id"],
+                        row["anomaly_score"],
+                        row["severity"],
+                        str(row["created_at"])[:19],
+                    )
 
 
 # ========== TAB 2: ZAMAN SERISI KARSILASTIRMA ==========
 def render_timeseries_comparison(df, raw_df):
-    st.markdown("### 📉 Zaman Serisi Karsilastirma: Normal vs Kacak")
-    st.markdown("*Ayni profildeki normal ve kacak musterilerin tuketim paternlerini yan yana karsilastirin.*")
+    theme = st.session_state.get("ui_theme", "dark")
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
+
+    title = "Time Series Comparison: Normal vs Theft" if is_en else "Zaman Serisi Karsilastirma: Normal vs Kacak"
+    subtitle = "Compare normal and theft consumption patterns side by side." if is_en else "Ayni profildeki normal ve kacak musterilerin tuketim paternlerini yan yana karsilastirin."
+    profile_label_txt = "Customer Profile" if is_en else "Musteri Profili"
+    days_label_txt = "Time Window" if is_en else "Gosterilecek Sure"
+    no_data_txt = "Insufficient sample in first 200 customers for this profile." if is_en else "Bu profil icin yeterli veri yok (ilk 200 musteri icinde)."
+    stats_title = "Statistics Comparison" if is_en else "Istatistik Karsilastirma"
+    patterns_title = "All Theft Types - Sample Consumption Patterns" if is_en else "Tum Kacak Turleri - Ornek Tuketim Paternleri"
+
+    st.markdown(f"### {title}")
+    st.markdown(f"*{subtitle}*")
 
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        profile_sel = st.selectbox("Musteri Profili", ['residential', 'commercial', 'industrial'],
-                                    format_func=lambda x: {'residential': '🏠 Konut', 'commercial': '🏢 Ticari', 'industrial': '🏭 Sanayi'}[x])
+        profile_sel = st.selectbox(
+            profile_label_txt,
+            ["residential", "commercial", "industrial"],
+            format_func=profile_label,
+        )
 
     with col2:
-        days_sel = st.selectbox("Gosterilecek Sure", [3, 7, 14, 30], index=1, format_func=lambda x: f"{x} Gun")
+        days_sel = st.selectbox(
+            days_label_txt,
+            [3, 7, 14, 30],
+            index=1,
+            format_func=(lambda x: f"{x} days" if is_en else f"{x} Gun"),
+        )
 
-    # Normal ve kacak musteri sec
-    normal_pool = df[(df['label'] == 0) & (df['profile'] == profile_sel) & (df['customer_id'] < 200)]
-    theft_pool = df[(df['label'] == 1) & (df['profile'] == profile_sel) & (df['customer_id'] < 200)]
+    normal_pool = df[(df["label"] == 0) & (df["profile"] == profile_sel) & (df["customer_id"] < 200)]
+    theft_pool = df[(df["label"] == 1) & (df["profile"] == profile_sel) & (df["customer_id"] < 200)]
 
     if len(normal_pool) == 0 or len(theft_pool) == 0:
-        st.info("Bu profil icin yeterli veri yok (ilk 200 musteri icinde).")
+        st.info(no_data_txt)
         return
 
     normal_cust = normal_pool.iloc[0]
     theft_cust = theft_pool.iloc[0]
-
     n_points = days_sel * 96
 
-    # Normal
-    normal_raw = raw_df[raw_df['customer_id'] == normal_cust['customer_id']].head(n_points)
-    theft_raw = raw_df[raw_df['customer_id'] == theft_cust['customer_id']].head(n_points)
+    normal_raw = raw_df[raw_df["customer_id"] == normal_cust["customer_id"]].head(n_points)
+    theft_raw = raw_df[raw_df["customer_id"] == theft_cust["customer_id"]].head(n_points)
 
-    fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-        subplot_titles=[
-            f"✅ Normal Musteri #{int(normal_cust['customer_id'])} (Risk: {normal_cust['theft_probability']:.0%})",
-            f"⚠️ Kacak Musteri #{int(theft_cust['customer_id'])} — {theft_cust['theft_type']} (Risk: {theft_cust['theft_probability']:.0%})"
-        ]
+    norm_title = (
+        f"Normal Customer #{int(normal_cust['customer_id'])} (Risk: {normal_cust['theft_probability']:.0%})"
+        if is_en else
+        f"Normal Musteri #{int(normal_cust['customer_id'])} (Risk: {normal_cust['theft_probability']:.0%})"
+    )
+    theft_title = (
+        f"Theft Customer #{int(theft_cust['customer_id'])} - {theft_cust['theft_type']} (Risk: {theft_cust['theft_probability']:.0%})"
+        if is_en else
+        f"Kacak Musteri #{int(theft_cust['customer_id'])} - {theft_cust['theft_type']} (Risk: {theft_cust['theft_probability']:.0%})"
     )
 
-    # Normal tuketim
-    fig.add_trace(go.Scatter(
-        x=normal_raw['timestamp'], y=normal_raw['consumption_kw'],
-        mode='lines', line=dict(color='#27AE60', width=1),
-        fill='tozeroy', fillcolor='rgba(39,174,96,0.1)', name='Normal', showlegend=True
-    ), row=1, col=1)
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        subplot_titles=[norm_title, theft_title],
+    )
 
-    # Kacak tuketim
-    fig.add_trace(go.Scatter(
-        x=theft_raw['timestamp'], y=theft_raw['consumption_kw'],
-        mode='lines', line=dict(color='#E74C3C', width=1),
-        fill='tozeroy', fillcolor='rgba(231,76,60,0.1)', name='Kacak', showlegend=True
-    ), row=2, col=1)
+    fig.add_trace(
+        go.Scatter(
+            x=normal_raw["timestamp"],
+            y=normal_raw["consumption_kw"],
+            mode="lines",
+            line=dict(color="#27AE60", width=1),
+            fill="tozeroy",
+            fillcolor="rgba(39,174,96,0.1)",
+            name="Normal",
+            showlegend=True,
+        ),
+        row=1,
+        col=1,
+    )
 
-    # Sifir noktalarini isaretle
-    zero_points = theft_raw[theft_raw['consumption_kw'] < 0.01]
+    fig.add_trace(
+        go.Scatter(
+            x=theft_raw["timestamp"],
+            y=theft_raw["consumption_kw"],
+            mode="lines",
+            line=dict(color="#E74C3C", width=1),
+            fill="tozeroy",
+            fillcolor="rgba(231,76,60,0.1)",
+            name="Theft" if is_en else "Kacak",
+            showlegend=True,
+        ),
+        row=2,
+        col=1,
+    )
+
+    zero_points = theft_raw[theft_raw["consumption_kw"] < 0.01]
     if len(zero_points) > 0:
-        fig.add_trace(go.Scatter(
-            x=zero_points['timestamp'], y=zero_points['consumption_kw'],
-            mode='markers', marker=dict(color='#F39C12', size=4, symbol='x'),
-            name='Sifir Tuketim', showlegend=True
-        ), row=2, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=zero_points["timestamp"],
+                y=zero_points["consumption_kw"],
+                mode="markers",
+                marker=dict(color="#F39C12", size=4, symbol="x"),
+                name="Zero Consumption" if is_en else "Sifir Tuketim",
+                showlegend=True,
+            ),
+            row=2,
+            col=1,
+        )
 
-    fig.update_layout(height=550, hovermode='x unified', margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_yaxes(title_text='kW', row=1, col=1)
-    fig.update_yaxes(title_text='kW', row=2, col=1)
+    fig.update_layout(height=550, hovermode="x unified", margin=dict(l=20, r=20, t=40, b=20))
+    fig.update_yaxes(title_text="kW", row=1, col=1)
+    fig.update_yaxes(title_text="kW", row=2, col=1)
+    apply_plotly_theme(fig, theme)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Istatistik karsilastirma tablosu
-    st.markdown("#### 📋 Istatistik Karsilastirma")
+    st.markdown(f"#### {stats_title}")
+    metric_col_name = "Metric" if is_en else "Metrik"
+    normal_col_name = f"Normal #{int(normal_cust['customer_id'])}"
+    theft_col_name = f"Theft #{int(theft_cust['customer_id'])}" if is_en else f"Kacak #{int(theft_cust['customer_id'])}"
+
+    metrics_labels = [
+        "Mean Consumption (kW)" if is_en else "Ort. Tuketim (kW)",
+        "Std Consumption" if is_en else "Std Tuketim",
+        "Min Consumption" if is_en else "Min Tuketim",
+        "Max Consumption" if is_en else "Max Tuketim",
+        "Zero Measurement %" if is_en else "Sifir Olcum %",
+        "Sudden Change Ratio" if is_en else "Ani Degisim Orani",
+        "Night/Day Ratio" if is_en else "Gece/Gunduz Orani",
+        "Theft Probability" if is_en else "Kacak Olasiligi",
+    ]
+
     comp_data = {
-        'Metrik': ['Ort. Tuketim (kW)', 'Std Tuketim', 'Min Tuketim', 'Max Tuketim',
-                   'Sifir Olcum %', 'Ani Degisim Orani', 'Gece/Gunduz Orani', 'Kacak Olasiligi'],
-        f'Normal #{int(normal_cust["customer_id"])}': [
-            f"{normal_cust['mean_consumption']:.3f}", f"{normal_cust['std_consumption']:.3f}",
-            f"{normal_cust['min_consumption']:.3f}", f"{normal_cust['max_consumption']:.3f}",
-            f"{normal_cust['zero_measurement_pct']:.1%}", f"{normal_cust['sudden_change_ratio']:.4f}",
-            f"{normal_cust['night_day_ratio']:.3f}", f"{normal_cust['theft_probability']:.1%}"
+        metric_col_name: metrics_labels,
+        normal_col_name: [
+            f"{normal_cust['mean_consumption']:.3f}",
+            f"{normal_cust['std_consumption']:.3f}",
+            f"{normal_cust['min_consumption']:.3f}",
+            f"{normal_cust['max_consumption']:.3f}",
+            f"{normal_cust['zero_measurement_pct']:.1%}",
+            f"{normal_cust['sudden_change_ratio']:.4f}",
+            f"{normal_cust['night_day_ratio']:.3f}",
+            f"{normal_cust['theft_probability']:.1%}",
         ],
-        f'Kacak #{int(theft_cust["customer_id"])}': [
-            f"{theft_cust['mean_consumption']:.3f}", f"{theft_cust['std_consumption']:.3f}",
-            f"{theft_cust['min_consumption']:.3f}", f"{theft_cust['max_consumption']:.3f}",
-            f"{theft_cust['zero_measurement_pct']:.1%}", f"{theft_cust['sudden_change_ratio']:.4f}",
-            f"{theft_cust['night_day_ratio']:.3f}", f"{theft_cust['theft_probability']:.1%}"
+        theft_col_name: [
+            f"{theft_cust['mean_consumption']:.3f}",
+            f"{theft_cust['std_consumption']:.3f}",
+            f"{theft_cust['min_consumption']:.3f}",
+            f"{theft_cust['max_consumption']:.3f}",
+            f"{theft_cust['zero_measurement_pct']:.1%}",
+            f"{theft_cust['sudden_change_ratio']:.4f}",
+            f"{theft_cust['night_day_ratio']:.3f}",
+            f"{theft_cust['theft_probability']:.1%}",
         ],
     }
     st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
 
-    # Kacak turleri grid
-    st.markdown("---")
-    st.markdown("### 🔍 Tum Kacak Turleri — Ornek Tuketim Paternleri")
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown(f"### {patterns_title}")
 
-    theft_types = ['constant_reduction', 'night_zeroing', 'random_zeros', 'gradual_decrease', 'peak_clipping']
-    type_labels = {
-        'constant_reduction': 'Sabit Azaltma\n(Sayac Manipulasyonu)',
-        'night_zeroing': 'Gece Sifirlamasi\n(Kablo Bypass)',
-        'random_zeros': 'Rastgele Sifirlar\n(Sayac Durdurma)',
-        'gradual_decrease': 'Kademeli Azalma\n(Yavas Hirsizlik)',
-        'peak_clipping': 'Pik Kirpma\n(Akim Sinirlandirma)',
+    theft_types = ["constant_reduction", "night_zeroing", "random_zeros", "gradual_decrease", "peak_clipping"]
+    type_labels_tr = {
+        "constant_reduction": "Sabit Azaltma (Sayac Manipulasyonu)",
+        "night_zeroing": "Gece Sifirlamasi (Kablo Bypass)",
+        "random_zeros": "Rastgele Sifirlar (Sayac Durdurma)",
+        "gradual_decrease": "Kademeli Azalma (Yavas Hirsizlik)",
+        "peak_clipping": "Pik Kirpma (Akim Sinirlandirma)",
     }
+    type_labels_en = {
+        "constant_reduction": "Constant Reduction (Meter Tampering)",
+        "night_zeroing": "Night Zeroing (Cable Bypass)",
+        "random_zeros": "Random Zeros (Meter Stop)",
+        "gradual_decrease": "Gradual Decrease (Slow Theft)",
+        "peak_clipping": "Peak Clipping (Current Limiting)",
+    }
+    type_labels = type_labels_en if is_en else type_labels_tr
 
-    fig = make_subplots(rows=1, cols=5, subplot_titles=[type_labels[t].replace('\n', ' ') for t in theft_types])
-    colors = ['#E74C3C', '#E67E22', '#F39C12', '#8E44AD', '#2980B9']
+    fig2 = make_subplots(rows=1, cols=5, subplot_titles=[type_labels[t] for t in theft_types])
+    colors = ["#E74C3C", "#E67E22", "#F39C12", "#8E44AD", "#2980B9"]
 
     for i, tt in enumerate(theft_types):
-        tt_cust = df[(df['theft_type'] == tt) & (df['customer_id'] < 200)]
+        tt_cust = df[(df["theft_type"] == tt) & (df["customer_id"] < 200)]
         if len(tt_cust) > 0:
-            cid = tt_cust.iloc[0]['customer_id']
-            cust_raw = raw_df[raw_df['customer_id'] == cid].head(96 * 3)  # 3 gun
-            fig.add_trace(go.Scatter(
-                y=cust_raw['consumption_kw'].values, mode='lines',
-                line=dict(color=colors[i], width=1), fill='tozeroy',
-                fillcolor=f'rgba({int(colors[i][1:3],16)},{int(colors[i][3:5],16)},{int(colors[i][5:7],16)},0.1)',
-                name=tt, showlegend=False
-            ), row=1, col=i+1)
+            cid = tt_cust.iloc[0]["customer_id"]
+            cust_raw = raw_df[raw_df["customer_id"] == cid].head(96 * 3)
+            fig2.add_trace(
+                go.Scatter(
+                    y=cust_raw["consumption_kw"].values,
+                    mode="lines",
+                    line=dict(color=colors[i], width=1),
+                    fill="tozeroy",
+                    fillcolor=f"rgba({int(colors[i][1:3],16)},{int(colors[i][3:5],16)},{int(colors[i][5:7],16)},0.1)",
+                    name=tt,
+                    showlegend=False,
+                ),
+                row=1,
+                col=i + 1,
+            )
 
-    fig.update_layout(height=280, margin=dict(l=10, r=10, t=40, b=10))
+    fig2.update_layout(height=280, margin=dict(l=10, r=10, t=40, b=10))
     for i in range(1, 6):
-        fig.update_yaxes(title_text='kW' if i == 1 else '', row=1, col=i)
-        fig.update_xaxes(title_text='', showticklabels=False, row=1, col=i)
-    st.plotly_chart(fig, use_container_width=True)
+        fig2.update_yaxes(title_text="kW" if i == 1 else "", row=1, col=i)
+        fig2.update_xaxes(title_text="", showticklabels=False, row=1, col=i)
+    apply_plotly_theme(fig2, theme)
+    st.plotly_chart(fig2, use_container_width=True)
 
 
 # ========== TAB 3: MODEL PERFORMANSI ==========
 def render_model_performance(df, metrics):
-    st.markdown("### 🧠 Model Performans Analizi")
+    theme = st.session_state.get("ui_theme", "dark")
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
 
-    # Karsilastirma KPI
+    title = "Model Performance Analysis" if is_en else "Model Performans Analizi"
+    roc_title = "ROC Curve"
+    pr_title = "Precision-Recall Curve"
+    rf_cm_title = "Random Forest - Confusion Matrix"
+    iso_cm_title = "Isolation Forest - Confusion Matrix"
+    importance_title = "Feature Importance (Random Forest)" if is_en else "Ozellik Onemliligi (Random Forest)"
+    detect_title = "Detection Success by Theft Type" if is_en else "Kacak Turune Gore Tespit Basarisi"
+    model_table_title = "Model Comparison Table" if is_en else "Model Karsilastirma Tablosu"
+
+    st.markdown(f"### {title}")
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("RF ROC-AUC", f"{metrics['rf_auc']:.4f}")
-    col2.metric("RF F1 Score", f"{metrics['rf_f1']:.4f}")
+    col2.metric("RF F1", f"{metrics['rf_f1']:.4f}")
     col3.metric("IF ROC-AUC", f"{metrics['iso_auc']:.4f}")
-    col4.metric("IF F1 Score", f"{metrics['iso_f1']:.4f}")
+    col4.metric("IF F1", f"{metrics['iso_f1']:.4f}")
 
-    st.markdown("---")
-
-    # ROC ve PR curves
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### ROC Curve")
+        st.markdown(f"#### {roc_title}")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=metrics['rf_fpr'], y=metrics['rf_tpr'], mode='lines',
-                                  name=f"Random Forest (AUC={metrics['rf_auc']:.3f})",
-                                  line=dict(color='#2E86C1', width=2.5)))
-        fig.add_trace(go.Scatter(x=metrics['iso_fpr'], y=metrics['iso_tpr'], mode='lines',
-                                  name=f"Isolation Forest (AUC={metrics['iso_auc']:.3f})",
-                                  line=dict(color='#E67E22', width=2.5)))
-        fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines',
-                                  name='Random (AUC=0.500)',
-                                  line=dict(color='gray', width=1, dash='dash')))
+        fig.add_trace(go.Scatter(x=metrics["rf_fpr"], y=metrics["rf_tpr"], mode="lines", name=f"Random Forest (AUC={metrics['rf_auc']:.3f})", line=dict(color="#2E86C1", width=2.5)))
+        fig.add_trace(go.Scatter(x=metrics["iso_fpr"], y=metrics["iso_tpr"], mode="lines", name=f"Isolation Forest (AUC={metrics['iso_auc']:.3f})", line=dict(color="#E67E22", width=2.5)))
+        fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Random (AUC=0.500)", line=dict(color="gray", width=1, dash="dash")))
         fig.update_layout(
-            xaxis_title='False Positive Rate', yaxis_title='True Positive Rate',
-            height=400, margin=dict(l=20, r=20, t=20, b=20),
-            legend=dict(x=0.4, y=0.1, bgcolor='rgba(255,255,255,0.8)')
+            xaxis_title="False Positive Rate",
+            yaxis_title="True Positive Rate",
+            height=400,
+            margin=dict(l=20, r=20, t=20, b=20),
+            legend=dict(x=0.35, y=0.1),
         )
+        apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.markdown("#### Precision-Recall Curve")
+        st.markdown(f"#### {pr_title}")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=metrics['rf_rec'], y=metrics['rf_prec'], mode='lines',
-                                  name='Random Forest', line=dict(color='#2E86C1', width=2.5)))
-        fig.add_trace(go.Scatter(x=metrics['iso_rec'], y=metrics['iso_prec'], mode='lines',
-                                  name='Isolation Forest', line=dict(color='#E67E22', width=2.5)))
-        baseline = (metrics['y_test'] == 1).sum() / len(metrics['y_test'])
-        fig.add_trace(go.Scatter(x=[0, 1], y=[baseline, baseline], mode='lines',
-                                  name=f'Baseline ({baseline:.2f})',
-                                  line=dict(color='gray', width=1, dash='dash')))
+        fig.add_trace(go.Scatter(x=metrics["rf_rec"], y=metrics["rf_prec"], mode="lines", name="Random Forest", line=dict(color="#2E86C1", width=2.5)))
+        fig.add_trace(go.Scatter(x=metrics["iso_rec"], y=metrics["iso_prec"], mode="lines", name="Isolation Forest", line=dict(color="#E67E22", width=2.5)))
+        baseline = (metrics["y_test"] == 1).sum() / len(metrics["y_test"])
+        fig.add_trace(go.Scatter(x=[0, 1], y=[baseline, baseline], mode="lines", name=f"Baseline ({baseline:.2f})", line=dict(color="gray", width=1, dash="dash")))
         fig.update_layout(
-            xaxis_title='Recall', yaxis_title='Precision',
-            height=400, margin=dict(l=20, r=20, t=20, b=20),
-            legend=dict(x=0.02, y=0.1, bgcolor='rgba(255,255,255,0.8)')
+            xaxis_title="Recall",
+            yaxis_title="Precision",
+            height=400,
+            margin=dict(l=20, r=20, t=20, b=20),
+            legend=dict(x=0.02, y=0.1),
         )
+        apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("---")
-
-    # Confusion Matrices
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### Random Forest — Confusion Matrix")
-        cm = metrics['rf_cm']
+        st.markdown(f"#### {rf_cm_title}")
+        cm = metrics["rf_cm"]
         fig = go.Figure(data=go.Heatmap(
-            z=cm, x=['Normal', 'Kacak'], y=['Normal', 'Kacak'],
-            colorscale='Blues', showscale=False,
-            text=cm, texttemplate='%{text}', textfont={'size': 22}
+            z=cm,
+            x=["Normal", "Theft" if is_en else "Kacak"],
+            y=["Normal", "Theft" if is_en else "Kacak"],
+            colorscale="Blues",
+            showscale=False,
+            text=cm,
+            texttemplate="%{text}",
+            textfont={"size": 22},
         ))
         fig.update_layout(
-            xaxis_title='Tahmin', yaxis_title='Gercek',
-            height=350, margin=dict(l=20, r=20, t=20, b=20),
-            yaxis=dict(autorange='reversed')
+            xaxis_title="Predicted" if is_en else "Tahmin",
+            yaxis_title="Actual" if is_en else "Gercek",
+            height=350,
+            margin=dict(l=20, r=20, t=20, b=20),
+            yaxis=dict(autorange="reversed"),
         )
+        apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.markdown("#### Isolation Forest — Confusion Matrix")
-        cm = metrics['iso_cm']
+        st.markdown(f"#### {iso_cm_title}")
+        cm = metrics["iso_cm"]
         fig = go.Figure(data=go.Heatmap(
-            z=cm, x=['Normal', 'Kacak'], y=['Normal', 'Kacak'],
-            colorscale='Oranges', showscale=False,
-            text=cm, texttemplate='%{text}', textfont={'size': 22}
+            z=cm,
+            x=["Normal", "Theft" if is_en else "Kacak"],
+            y=["Normal", "Theft" if is_en else "Kacak"],
+            colorscale="Oranges",
+            showscale=False,
+            text=cm,
+            texttemplate="%{text}",
+            textfont={"size": 22},
         ))
         fig.update_layout(
-            xaxis_title='Tahmin', yaxis_title='Gercek',
-            height=350, margin=dict(l=20, r=20, t=20, b=20),
-            yaxis=dict(autorange='reversed')
+            xaxis_title="Predicted" if is_en else "Tahmin",
+            yaxis_title="Actual" if is_en else "Gercek",
+            height=350,
+            margin=dict(l=20, r=20, t=20, b=20),
+            yaxis=dict(autorange="reversed"),
         )
+        apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("---")
-
-    # Feature Importance
-    st.markdown("#### 🎯 Ozellik Onemliligi (Random Forest)")
-    imp = metrics['importance']
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown(f"#### {importance_title}")
+    imp = metrics["importance"]
     top_feats = sorted(imp.items(), key=lambda x: x[1], reverse=True)[:12]
     feat_names = [f[0] for f in top_feats][::-1]
     feat_vals = [f[1] for f in top_feats][::-1]
 
     fig = go.Figure(go.Bar(
-        x=feat_vals, y=feat_names, orientation='h',
-        marker=dict(color=feat_vals, colorscale='Blues', showscale=False),
-        text=[f'{v:.3f}' for v in feat_vals], textposition='outside'
+        x=feat_vals,
+        y=feat_names,
+        orientation="h",
+        marker=dict(color=feat_vals, colorscale="Blues", showscale=False),
+        text=[f"{v:.3f}" for v in feat_vals],
+        textposition="outside",
     ))
     fig.update_layout(
-        height=400, margin=dict(l=20, r=80, t=20, b=20),
-        xaxis_title='Onem Skoru'
+        height=400,
+        margin=dict(l=20, r=80, t=20, b=20),
+        xaxis_title="Importance Score" if is_en else "Onem Skoru",
     )
+    apply_plotly_theme(fig, theme)
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("---")
-
-    # Kacak turune gore tespit basarisi
-    st.markdown("#### 📋 Kacak Turune Gore Tespit Basarisi")
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown(f"#### {detect_title}")
     col1, col2 = st.columns(2)
 
     with col1:
-        theft_df = df[df['label'] == 1]
-        type_detection = theft_df.groupby('theft_type').agg(
-            toplam=('label', 'count'),
-            tespit=('predicted_theft', 'sum')
-        ).reset_index()
-        type_detection['oran'] = type_detection['tespit'] / type_detection['toplam'] * 100
+        theft_df = df[df["label"] == 1]
+        type_detection = theft_df.groupby("theft_type").agg(toplam=("label", "count"), tespit=("predicted_theft", "sum")).reset_index()
+        type_detection["oran"] = type_detection["tespit"] / type_detection["toplam"] * 100
 
         fig = go.Figure(go.Bar(
-            x=type_detection['theft_type'], y=type_detection['oran'],
-            marker_color=['#1B4F72', '#2E86C1', '#5DADE2', '#85C1E9', '#AED6F1'],
-            text=[f'{v:.0f}%' for v in type_detection['oran']], textposition='outside'
+            x=type_detection["theft_type"],
+            y=type_detection["oran"],
+            marker_color=["#1B4F72", "#2E86C1", "#5DADE2", "#85C1E9", "#AED6F1"],
+            text=[f"{v:.0f}%" for v in type_detection["oran"]],
+            textposition="outside",
         ))
         fig.update_layout(
-            yaxis_title='Tespit Orani (%)', yaxis_range=[0, 110],
-            height=350, margin=dict(l=20, r=20, t=20, b=20)
+            yaxis_title="Detection Rate (%)" if is_en else "Tespit Orani (%)",
+            yaxis_range=[0, 110],
+            height=350,
+            margin=dict(l=20, r=20, t=20, b=20),
         )
+        apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        # Tum model karsilastirma tablosu
-        st.markdown("#### Model Karsilastirma Tablosu")
+        st.markdown(f"#### {model_table_title}")
         model_data = {
-            'Model': ['Random Forest', 'XGBoost', 'Isolation Forest', 'LSTM Autoencoder'],
-            'Tip': ['Supervised', 'Supervised', 'Unsupervised', 'Deep Learning'],
-            'ROC-AUC': ['0.9471', '0.9373', '0.8208', '0.7482*'],
-            'F1 Score': ['0.8704', '0.8468', '0.2609', '0.5600*'],
-            'Avantaj': ['En yuksek dogruluk', 'Ozellik onemliligi', 'Etiket gerektirmez', 'Zaman serisi analizi']
+            "Model": ["Random Forest", "XGBoost", "Isolation Forest", "LSTM Autoencoder"],
+            ("Type" if is_en else "Tip"): ["Supervised", "Supervised", "Unsupervised", "Deep Learning"],
+            "ROC-AUC": ["0.9471", "0.9373", "0.8208", "0.7482*"],
+            "F1": ["0.8704", "0.8468", "0.2609", "0.5600*"],
+            ("Advantage" if is_en else "Avantaj"): [
+                "Highest accuracy" if is_en else "En yuksek dogruluk",
+                "Feature importance" if is_en else "Ozellik onemliligi",
+                "No labels needed" if is_en else "Etiket gerektirmez",
+                "Time-series patterning" if is_en else "Zaman serisi analizi",
+            ],
         }
         st.dataframe(pd.DataFrame(model_data), use_container_width=True, hide_index=True)
-        st.caption("*Musteri bazli degerlendirme")
+        st.caption("*Per-customer evaluation" if is_en else "*Musteri bazli degerlendirme")
 
 
 # ========== TAB 4: MUSTERI DETAY ==========
 def render_customer_detail(df, raw_df):
-    st.markdown("### 🔎 Musteri Detay Inceleme")
+    theme = st.session_state.get("ui_theme", "dark")
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
+
+    st.markdown("### Customer Detail" if is_en else "### Musteri Detay Inceleme")
 
     col1, col2 = st.columns([1, 3])
 
     with col1:
-        view_mode = st.radio("Gosterim", ["Yuksek Riskli", "Tum Musteriler"], label_visibility="collapsed")
+        view_label = "View" if is_en else "Gosterim"
+        high_risk_opt = "High Risk" if is_en else "Yuksek Riskli"
+        all_opt = "All Customers" if is_en else "Tum Musteriler"
+        view_mode = st.radio(view_label, [high_risk_opt, all_opt], label_visibility="collapsed")
 
-        if view_mode == "Yuksek Riskli":
-            pool = df[df['theft_probability'] > 0.5].sort_values('theft_probability', ascending=False)
+        if view_mode == high_risk_opt:
+            pool = df[df["theft_probability"] > 0.5].sort_values("theft_probability", ascending=False)
         else:
-            pool = df.sort_values('customer_id')
+            pool = df.sort_values("customer_id")
 
         if len(pool) == 0:
-            st.info("Bu filtrede musteri yok.")
+            st.info("No customer in this filter." if is_en else "Bu filtrede musteri yok.")
             return
 
+        select_label = "Select Customer" if is_en else "Musteri Sec"
         selected_id = st.selectbox(
-            "Musteri Sec", options=pool['customer_id'].tolist(),
-            format_func=lambda x: f"#{x} ({df[df['customer_id']==x]['theft_probability'].values[0]:.0%})"
+            select_label,
+            options=pool["customer_id"].tolist(),
+            format_func=lambda x: f"#{x} ({df[df['customer_id'] == x]['theft_probability'].values[0]:.0%})",
         )
 
-        cust = df[df['customer_id'] == selected_id].iloc[0]
-        st.markdown(f"**Profil:** {cust['profile']}")
-        st.markdown(f"**Risk:** {cust['risk_level']}")
-        st.markdown(f"**Kacak Olasiligi:** {cust['theft_probability']:.1%}")
-        st.markdown(f"**Anomali Skoru:** {cust['anomaly_score']:.3f}")
+        cust = df[df["customer_id"] == selected_id].iloc[0]
+        st.markdown(f"**{tr('profile')}:** {profile_label(cust['profile'])}")
+        st.markdown(f"**{tr('risk')}:** {risk_label(cust['risk_level'])}")
+        st.markdown(f"**{tr('probability')}:** {cust['theft_probability']:.1%}")
+        st.markdown(f"**{tr('anomaly_score')}:** {cust['anomaly_score']:.3f}")
 
-        if cust['label'] == 1:
-            st.markdown(f"**Kacak Turu:** {cust['theft_type']}")
+        if cust["label"] == 1:
+            theft_type_label = "Theft Type" if is_en else "Kacak Turu"
+            st.markdown(f"**{theft_type_label}:** {cust['theft_type']}")
 
-        if cust['theft_probability'] > 0.7:
-            st.markdown('<div class="alert-box">⚠️ <strong>YUKSEK RISK</strong></div>', unsafe_allow_html=True)
-        elif cust['theft_probability'] < 0.3:
-            st.markdown('<div class="safe-box">✅ Normal</div>', unsafe_allow_html=True)
+        if cust["theft_probability"] > 0.7:
+            st.markdown('<div class="alert-box">WARNING <strong>HIGH RISK</strong></div>' if is_en else '<div class="alert-box">UYARI <strong>YUKSEK RISK</strong></div>', unsafe_allow_html=True)
+        elif cust["theft_probability"] < 0.3:
+            st.markdown('<div class="safe-box">SAFE</div>' if is_en else '<div class="safe-box">NORMAL</div>', unsafe_allow_html=True)
 
     with col2:
-        cust_raw = raw_df[raw_df['customer_id'] == selected_id]
+        cust_raw = raw_df[raw_df["customer_id"] == selected_id]
         if len(cust_raw) > 0:
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-                               subplot_titles=['Tuketim Profili', 'Gunluk Toplam Tuketim'], row_heights=[0.6, 0.4])
+            subplot_1 = "Consumption Profile" if is_en else "Tuketim Profili"
+            subplot_2 = "Daily Total Consumption" if is_en else "Gunluk Toplam Tuketim"
+            fig = make_subplots(
+                rows=2,
+                cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.08,
+                subplot_titles=[subplot_1, subplot_2],
+                row_heights=[0.6, 0.4],
+            )
 
-            # Zaman serisi
-            fig.add_trace(go.Scatter(
-                x=cust_raw['timestamp'], y=cust_raw['consumption_kw'],
-                mode='lines', line=dict(color='#2E86C1', width=1),
-                fill='tozeroy', fillcolor='rgba(46,134,193,0.1)', name='Tuketim'
-            ), row=1, col=1)
+            fig.add_trace(
+                go.Scatter(
+                    x=cust_raw["timestamp"],
+                    y=cust_raw["consumption_kw"],
+                    mode="lines",
+                    line=dict(color="#2E86C1", width=1),
+                    fill="tozeroy",
+                    fillcolor="rgba(46,134,193,0.1)",
+                    name="Consumption" if is_en else "Tuketim",
+                ),
+                row=1,
+                col=1,
+            )
 
-            # Sifir noktalar
-            zeros = cust_raw[cust_raw['consumption_kw'] < 0.01]
+            zeros = cust_raw[cust_raw["consumption_kw"] < 0.01]
             if len(zeros) > 0:
-                fig.add_trace(go.Scatter(
-                    x=zeros['timestamp'], y=zeros['consumption_kw'],
-                    mode='markers', marker=dict(color='red', size=3), name='Sifir'
-                ), row=1, col=1)
+                fig.add_trace(
+                    go.Scatter(
+                        x=zeros["timestamp"],
+                        y=zeros["consumption_kw"],
+                        mode="markers",
+                        marker=dict(color="red", size=3),
+                        name="Zero" if is_en else "Sifir",
+                    ),
+                    row=1,
+                    col=1,
+                )
 
-            # Gunluk toplam
-            daily = cust_raw.set_index('timestamp').resample('D')['consumption_kw'].sum().reset_index()
-            bar_colors = ['#E74C3C' if v < daily['consumption_kw'].mean() * 0.3 else '#2E86C1'
-                         for v in daily['consumption_kw']]
-            fig.add_trace(go.Bar(
-                x=daily['timestamp'], y=daily['consumption_kw'],
-                marker_color=bar_colors, name='Gunluk', showlegend=False
-            ), row=2, col=1)
+            daily = cust_raw.set_index("timestamp").resample("D")["consumption_kw"].sum().reset_index()
+            bar_colors = ["#E74C3C" if v < daily["consumption_kw"].mean() * 0.3 else "#2E86C1" for v in daily["consumption_kw"]]
+            fig.add_trace(
+                go.Bar(
+                    x=daily["timestamp"],
+                    y=daily["consumption_kw"],
+                    marker_color=bar_colors,
+                    name="Daily" if is_en else "Gunluk",
+                    showlegend=False,
+                ),
+                row=2,
+                col=1,
+            )
 
-            fig.update_layout(height=500, margin=dict(l=20, r=20, t=40, b=20), hovermode='x unified')
-            fig.update_yaxes(title_text='kW', row=1, col=1)
-            fig.update_yaxes(title_text='kWh/gun', row=2, col=1)
+            fig.update_layout(height=500, margin=dict(l=20, r=20, t=40, b=20), hovermode="x unified")
+            fig.update_yaxes(title_text="kW", row=1, col=1)
+            fig.update_yaxes(title_text="kWh/day" if is_en else "kWh/gun", row=2, col=1)
+            apply_plotly_theme(fig, theme)
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Ham tuketim verisi mevcut degil (ilk 200 musteri).")
+            st.info("Raw consumption data not available (first 200 customers)." if is_en else "Ham tuketim verisi mevcut degil (ilk 200 musteri).")
 
-    # Ozellik radar grafigi
-    st.markdown("---")
-    st.markdown("#### 🕸️ Musteri Ozellik Profili")
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown("#### Customer Feature Profile" if is_en else "#### Musteri Ozellik Profili")
 
-    features_to_show = ['mean_consumption', 'std_consumption', 'zero_measurement_pct',
-                        'sudden_change_ratio', 'night_day_ratio', 'cv_daily']
-    labels = ['Ort. Tuketim', 'Std Sapma', 'Sifir %', 'Ani Degisim', 'Gece/Gunduz', 'Gunluk CV']
+    features_to_show = ["mean_consumption", "std_consumption", "zero_measurement_pct", "sudden_change_ratio", "night_day_ratio", "cv_daily"]
+    labels = [
+        "Mean Consumption" if is_en else "Ort. Tuketim",
+        "Std Dev" if is_en else "Std Sapma",
+        "Zero %" if is_en else "Sifir %",
+        "Sudden Change" if is_en else "Ani Degisim",
+        "Night/Day" if is_en else "Gece/Gunduz",
+        "Daily CV" if is_en else "Gunluk CV",
+    ]
 
-    # Normalize (0-1 arasi)
-    cust_vals = []
-    pop_vals = []
+    cust_vals, pop_vals = [], []
     for f in features_to_show:
         f_min = df[f].min()
         f_max = df[f].max()
         cust_vals.append((cust[f] - f_min) / (f_max - f_min + 1e-8))
         pop_vals.append((df[f].mean() - f_min) / (f_max - f_min + 1e-8))
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=pop_vals + [pop_vals[0]], theta=labels + [labels[0]],
-                                   fill='toself', fillcolor='rgba(46,134,193,0.1)',
-                                   line=dict(color='#2E86C1'), name='Populasyon Ort.'))
-    fig.add_trace(go.Scatterpolar(r=cust_vals + [cust_vals[0]], theta=labels + [labels[0]],
-                                   fill='toself', fillcolor='rgba(231,76,60,0.15)',
-                                   line=dict(color='#E74C3C'), name=f'Musteri #{int(selected_id)}'))
-    fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-                     height=400, margin=dict(l=60, r=60, t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    radar = go.Figure()
+    radar.add_trace(go.Scatterpolar(
+        r=pop_vals + [pop_vals[0]],
+        theta=labels + [labels[0]],
+        fill="toself",
+        fillcolor="rgba(46,134,193,0.1)",
+        line=dict(color="#2E86C1"),
+        name="Population Avg" if is_en else "Populasyon Ort.",
+    ))
+    radar.add_trace(go.Scatterpolar(
+        r=cust_vals + [cust_vals[0]],
+        theta=labels + [labels[0]],
+        fill="toself",
+        fillcolor="rgba(231,76,60,0.15)",
+        line=dict(color="#E74C3C"),
+        name=(f"Customer #{int(selected_id)}" if is_en else f"Musteri #{int(selected_id)}"),
+    ))
+    radar.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+        height=400,
+        margin=dict(l=60, r=60, t=20, b=20),
+    )
+    apply_plotly_theme(radar, theme)
+    st.plotly_chart(radar, use_container_width=True)
 
 
 # ========== TAB 5: CANLI SIMULASYON ==========
 def render_live_simulation(df, raw_df):
-    st.markdown('<p style="font-size:1.3rem; font-weight:600;">🔴 <span class="live-indicator"></span> Canli Simulasyon Modu</p>', unsafe_allow_html=True)
-    st.markdown("*Gercek zamanli akan veri simulasyonu — MASS sayaclarindan gelen veriyi canli izleyin.*")
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
+
+    title = "Live Simulation Mode" if is_en else "Canli Simulasyon Modu"
+    desc = "Watch streaming telemetry and anomaly signals in real time." if is_en else "Gercek zamanli akan veri simulasyonu - MASS sayaclarindan gelen veriyi canli izleyin."
+
+    st.markdown(f'<p style="font-size:1.3rem; font-weight:600;"><span class="live-indicator"></span> {title}</p>', unsafe_allow_html=True)
+    st.markdown(f"*{desc}*")
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        sim_speed = st.selectbox("Hiz", [0.05, 0.1, 0.2, 0.5], index=1, format_func=lambda x: f"{x}s aralik")
+        sim_speed = st.selectbox("Speed" if is_en else "Hiz", [0.05, 0.1, 0.2, 0.5], index=1, format_func=lambda x: f"{x}s")
     with col2:
-        n_customers = st.selectbox("Musteri Sayisi", [3, 5, 8], index=1)
+        n_customers = st.selectbox("Customer Count" if is_en else "Musteri Sayisi", [3, 5, 8], index=1)
     with col3:
-        sim_points = st.selectbox("Veri Noktasi", [50, 100, 200], index=1)
+        sim_points = st.selectbox("Data Points" if is_en else "Veri Noktasi", [50, 100, 200], index=1)
 
-    # Musterileri sec (karisik normal + kacak)
-    normal_sample = df[(df['label'] == 0) & (df['customer_id'] < 200)].head(n_customers - 1)
-    theft_sample = df[(df['label'] == 1) & (df['customer_id'] < 200)].head(1)
+    normal_sample = df[(df["label"] == 0) & (df["customer_id"] < 200)].head(n_customers - 1)
+    theft_sample = df[(df["label"] == 1) & (df["customer_id"] < 200)].head(1)
     sim_customers = pd.concat([normal_sample, theft_sample])
 
-    if st.button("▶️ Simulasyonu Baslat", type="primary", use_container_width=True):
-        # Canli metrik paneli
+    start_btn = "Start Simulation" if is_en else "Simulasyonu Baslat"
+    if st.button(start_btn, type="primary", use_container_width=True):
         metric_cols = st.columns(4)
-        metric_cols[0].markdown("**Akan Olcum**")
-        metric_cols[1].markdown("**Anomali Tespit**")
-        metric_cols[2].markdown("**Ort. Tuketim**")
-        metric_cols[3].markdown("**Alarm Sayisi**")
+        metric_cols[0].markdown("**Streaming Samples**" if is_en else "**Akan Olcum**")
+        metric_cols[1].markdown("**Detected Anomalies**" if is_en else "**Anomali Tespit**")
+        metric_cols[2].markdown("**Avg Consumption**" if is_en else "**Ort. Tuketim**")
+        metric_cols[3].markdown("**Alarm Count**" if is_en else "**Alarm Sayisi**")
 
         m_count = metric_cols[0].empty()
         m_anomaly = metric_cols[1].empty()
@@ -726,139 +2221,380 @@ def render_live_simulation(df, raw_df):
         anomaly_count = 0
         total_consumption = 0
 
-        # Her musteri icin veri hazirla
         customer_data = {}
         for _, c in sim_customers.iterrows():
-            cid = c['customer_id']
-            craw = raw_df[raw_df['customer_id'] == cid].head(sim_points)
+            cid = c["customer_id"]
+            craw = raw_df[raw_df["customer_id"] == cid].head(sim_points)
             customer_data[cid] = {
-                'values': craw['consumption_kw'].values,
-                'label': c['label'],
-                'theft_type': c.get('theft_type', 'none'),
-                'profile': c['profile'],
-                'buffer_x': [],
-                'buffer_y': []
+                "values": craw["consumption_kw"].values,
+                "label": c["label"],
+                "theft_type": c.get("theft_type", "none"),
+                "profile": c["profile"],
+                "buffer_x": [],
+                "buffer_y": [],
             }
 
         for step in range(sim_points):
-            fig = make_subplots(rows=len(sim_customers), cols=1, shared_xaxes=True,
-                               vertical_spacing=0.04)
+            fig = make_subplots(rows=len(sim_customers), cols=1, shared_xaxes=True, vertical_spacing=0.04)
 
             for i, (cid, cdata) in enumerate(customer_data.items()):
-                if step < len(cdata['values']):
-                    val = cdata['values'][step]
-                    cdata['buffer_x'].append(step)
-                    cdata['buffer_y'].append(val)
+                if step < len(cdata["values"]):
+                    val = cdata["values"][step]
+                    cdata["buffer_x"].append(step)
+                    cdata["buffer_y"].append(val)
                     total_consumption += val
 
-                    color = '#E74C3C' if cdata['label'] == 1 else '#27AE60'
-                    name = f"#{int(cid)} {'⚠️' if cdata['label']==1 else '✅'}"
+                    color = "#E74C3C" if cdata["label"] == 1 else "#27AE60"
+                    name = f"#{int(cid)} {'THEFT' if cdata['label'] == 1 else 'NORMAL'}" if is_en else f"#{int(cid)} {'KACAK' if cdata['label'] == 1 else 'NORMAL'}"
 
-                    fig.add_trace(go.Scatter(
-                        x=cdata['buffer_x'], y=cdata['buffer_y'],
-                        mode='lines', line=dict(color=color, width=1.5),
-                        fill='tozeroy', fillcolor=f'{color}15',
-                        name=name, showlegend=True
-                    ), row=i+1, col=1)
+                    r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=cdata["buffer_x"],
+                            y=cdata["buffer_y"],
+                            mode="lines",
+                            line=dict(color=color, width=1.5),
+                            fill="tozeroy",
+                            fillcolor=f"rgba({r},{g},{b},0.08)",
+                            name=name,
+                            showlegend=True,
+                        ),
+                        row=i + 1,
+                        col=1,
+                    )
 
-                    # Anomali tespiti (sifir veya ani dusus)
-                    if val < 0.01 and cdata['label'] == 1:
+                    if val < 0.01 and cdata["label"] == 1:
                         anomaly_count += 1
-                        fig.add_trace(go.Scatter(
-                            x=[step], y=[val], mode='markers',
-                            marker=dict(color='red', size=8, symbol='x'),
-                            showlegend=False
-                        ), row=i+1, col=1)
+                        fig.add_trace(
+                            go.Scatter(
+                                x=[step],
+                                y=[val],
+                                mode="markers",
+                                marker=dict(color="red", size=8, symbol="x"),
+                                showlegend=False,
+                            ),
+                            row=i + 1,
+                            col=1,
+                        )
 
                     if val < 0.01 and step > 5:
                         alarm_count += 1
 
-            fig.update_layout(
-                height=80 * len(sim_customers) + 100,
-                margin=dict(l=20, r=20, t=20, b=20),
-                showlegend=True,
-                legend=dict(orientation='h', y=1.02)
-            )
-
+            fig.update_layout(height=80 * len(sim_customers) + 100, margin=dict(l=20, r=20, t=20, b=20), showlegend=True, legend=dict(orientation="h", y=1.02))
             for i in range(len(sim_customers)):
-                fig.update_yaxes(title_text='kW', row=i+1, col=1)
+                fig.update_yaxes(title_text="kW", row=i + 1, col=1)
 
             chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-            # Metrikleri guncelle
-            m_count.metric("Akan Olcum", f"{step + 1}/{sim_points}")
-            m_anomaly.metric("Anomali Tespit", f"{anomaly_count}")
+            m_count.metric("Streaming Samples" if is_en else "Akan Olcum", f"{step + 1}/{sim_points}")
+            m_anomaly.metric("Detected Anomalies" if is_en else "Anomali Tespit", f"{anomaly_count}")
             avg = total_consumption / ((step + 1) * len(sim_customers))
-            m_avg.metric("Ort. Tuketim", f"{avg:.2f} kW")
-            m_alarm.metric("Alarm", f"{alarm_count}", delta="⚠️" if alarm_count > 0 else "")
+            m_avg.metric("Avg Consumption" if is_en else "Ort. Tuketim", f"{avg:.2f} kW")
+            m_alarm.metric("Alarms" if is_en else "Alarm", f"{alarm_count}", delta=("Warning" if is_en and alarm_count > 0 else ""))
 
-            # Alarm bildirimi
             if alarm_count > 0 and step % 20 == 0 and step > 0:
-                alert_placeholder.warning(f"🚨 {alarm_count} sifir tuketim alarmi tespit edildi!")
+                msg = f"{alarm_count} zero-consumption alerts detected" if is_en else f"{alarm_count} sifir tuketim alarmi tespit edildi"
+                alert_placeholder.warning(msg)
 
             progress.progress((step + 1) / sim_points)
             time.sleep(sim_speed)
 
         progress.empty()
-        st.success(f"✅ Simulasyon tamamlandi! {sim_points} olcum islendi, {anomaly_count} anomali tespit edildi.")
+        done = f"Simulation completed: {sim_points} samples processed, {anomaly_count} anomalies detected." if is_en else f"Simulasyon tamamlandi: {sim_points} olcum islendi, {anomaly_count} anomali tespit edildi."
+        st.success(done)
 
     else:
-        # Preview
-        st.markdown("---")
-        st.info("▶️ yukaridaki butona basarak canli simulasyonu baslatin. Simulasyon sırasında akan veriyi ve anomali tespitini gercek zamanli izleyebilirsiniz.")
+        st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+        info = "Press start to run real-time simulation preview." if is_en else "Yukaridaki butona basarak canli simulasyonu baslatin."
+        st.info(info)
 
-        # Onizleme grafigi
         preview_cust = sim_customers.iloc[0]
-        preview_raw = raw_df[raw_df['customer_id'] == preview_cust['customer_id']].head(96 * 3)
+        preview_raw = raw_df[raw_df["customer_id"] == preview_cust["customer_id"]].head(96 * 3)
         if len(preview_raw) > 0:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=preview_raw['timestamp'], y=preview_raw['consumption_kw'],
-                mode='lines', line=dict(color='#2E86C1', width=1),
-                fill='tozeroy', fillcolor='rgba(46,134,193,0.1)', name='Onizleme'
+                x=preview_raw["timestamp"],
+                y=preview_raw["consumption_kw"],
+                mode="lines",
+                line=dict(color="#2E86C1", width=1),
+                fill="tozeroy",
+                fillcolor="rgba(46,134,193,0.1)",
+                name="Preview" if is_en else "Onizleme",
             ))
-            fig.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20),
-                            title=f'Onizleme — Musteri #{int(preview_cust["customer_id"])}')
+            preview_title = f"Preview - Customer #{int(preview_cust['customer_id'])}" if is_en else f"Onizleme - Musteri #{int(preview_cust['customer_id'])}"
+            fig.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20), title=preview_title)
             st.plotly_chart(fig, use_container_width=True)
+
+
+def render_customer_list(df):
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
+
+    title = "All Customers - 2000 Records" if is_en else "Tum Musteriler - 2000 Kayit"
+    st.markdown(f"### {title}")
+
+    band_colors = {
+        "urgent": "#E74C3C",
+        "critical": "#E67E22",
+        "high": "#F1C40F",
+        "medium": "#3498DB",
+        "low": "#27AE60",
+    }
+
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
+    with c1:
+        search_label = "Search Customer ID" if is_en else "Musteri ID ara"
+        search = st.text_input(search_label, placeholder=("e.g. 1080" if is_en else "orn: 1080"))
+
+    all_risk_keys = ["urgent", "critical", "high", "medium", "low"]
+    with c2:
+        band_sel = st.multiselect(
+            tr("risk_band"),
+            all_risk_keys,
+            default=all_risk_keys,
+            format_func=lambda x: risk_label(x),
+        )
+
+    with c3:
+        profile_sel = st.multiselect(
+            tr("profile"),
+            ["residential", "commercial", "industrial"],
+            default=["residential", "commercial", "industrial"],
+            format_func=profile_label,
+        )
+
+    sort_opts = {
+        ("Risk Score Desc" if is_en else "Risk Skoru Azalan"): ("risk_score", False),
+        ("Monthly Loss Desc" if is_en else "Aylik Kayip Azalan"): ("est_monthly_loss", False),
+        ("Customer ID Asc" if is_en else "Musteri ID Artan"): ("customer_id", True),
+    }
+    with c4:
+        sort_col = st.selectbox("Sort" if is_en else "Siralama", list(sort_opts.keys()))
+
+    view = df.copy()
+    view["risk_key"] = view["risk_band"].astype(str).apply(canonical_risk)
+
+    if search:
+        view = view[view["customer_id"].astype(str).str.contains(search)]
+    if band_sel:
+        view = view[view["risk_key"].isin(band_sel)]
+    if profile_sel:
+        view = view[view["profile"].isin(profile_sel)]
+
+    sc, asc = sort_opts[sort_col]
+    if sc in view.columns:
+        view = view.sort_values(sc, ascending=asc)
+
+    shown_txt = "Showing" if is_en else "Gosterilen"
+    customer_txt = "customers" if is_en else "musteri"
+    st.caption(f"{shown_txt}: **{len(view)}** / {len(df)} {customer_txt}")
+
+    display = view[["customer_id", "profile", "risk_score", "risk_key", "theft_probability", "est_monthly_loss"]].copy()
+    id_col = tr("customer_id")
+    profile_col = tr("profile")
+    risk_score_col = "Risk Score" if is_en else "Risk Skoru"
+    risk_band_col = tr("risk_band")
+    prob_col = tr("probability")
+    loss_col = ("Monthly Loss" if is_en else "Aylik Kayip") + f" ({tr('currency_symbol')})"
+
+    display.columns = [id_col, profile_col, risk_score_col, risk_band_col, prob_col, loss_col]
+    display[profile_col] = display[profile_col].map(profile_label)
+    display[risk_band_col] = display[risk_band_col].map(risk_label)
+    display[prob_col] = (display[prob_col] * 100).round(2).astype(str) + "%"
+    display[loss_col] = display[loss_col].apply(lambda x: f"{tr('currency_symbol')}{x:,.0f}" if x > 0 else "-")
+
+    def color_band(val):
+        c = band_colors.get(canonical_risk(val), "#999")
+        return f"background-color:{c}22; color:{c}; font-weight:600"
+
+    def color_score(val):
+        if val >= 85:
+            return "color:#E74C3C; font-weight:700"
+        if val >= 70:
+            return "color:#E67E22; font-weight:600"
+        if val >= 45:
+            return "color:#F1C40F"
+        return "color:#27AE60"
+
+    styled = display.style.map(color_band, subset=[risk_band_col]).map(color_score, subset=[risk_score_col])
+    st.dataframe(styled, use_container_width=True, height=520, hide_index=True)
+
+    csv = view.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download CSV" if is_en else "CSV Indir",
+        csv,
+        file_name=f"customers_{time.strftime('%Y%m%d_%H%M')}.csv" if is_en else f"musteriler_{time.strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv",
+    )
+
+    exp_title = "Risk Band Summary" if is_en else "Risk Bandi Ozeti"
+    with st.expander(exp_title):
+        risk_order = ["urgent", "critical", "high", "medium", "low"]
+        tmp = view.copy()
+        tmp["risk_key"] = tmp["risk_band"].astype(str).apply(canonical_risk)
+        band_counts = tmp["risk_key"].value_counts().reindex(risk_order, fill_value=0)
+        band_loss = tmp.groupby("risk_key")["est_monthly_loss"].sum().reindex(risk_order, fill_value=0)
+
+        summary = pd.DataFrame({
+            tr("risk_band"): [risk_label(x) for x in risk_order],
+            ("Customer Count" if is_en else "Musteri Sayisi"): band_counts.values,
+            ("Total Monthly Loss" if is_en else "Toplam Aylik Kayip") + f" ({tr('currency_symbol')})": [f"{tr('currency_symbol')}{v:,.0f}" for v in band_loss.values],
+        })
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+
+
+def render_live_telemetry():
+    """Show the latest rows from Postgres raw_telemetry with a manual refresh button."""
+    theme = st.session_state.get("ui_theme", "dark")
+
+    if not _PSYCOPG2_AVAILABLE:
+        st.warning(f"{tr('telemetry_psycopg_missing')}\n\n`pip install psycopg2-binary`")
+        return
+
+    st.markdown(f"### {tr('telemetry_title')}")
+
+    col_btn, col_info = st.columns([1, 5])
+    with col_btn:
+        refresh = st.button(tr("refresh"), use_container_width=True)
+    with col_info:
+        st.caption(tr("telemetry_refresh_help"))
+
+    if "live_df" not in st.session_state or refresh:
+        try:
+            st.session_state["live_df"] = fetch_live_telemetry(limit=100)
+            st.session_state["live_ts"] = time.strftime("%H:%M:%S")
+        except Exception as exc:
+            st.error(f"{tr('telemetry_db_error')}: {exc}\n\n{tr('telemetry_db_help')}")
+            return
+
+    df = st.session_state.get("live_df", pd.DataFrame())
+    last_ts = st.session_state.get("live_ts", "-")
+
+    if df.empty:
+        st.info(tr("telemetry_no_data"))
+        return
+
+    st.caption(f"{tr('telemetry_last_updated')}: {last_ts}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric(tr("telemetry_total_records"), f"{len(df)}")
+    col2.metric(tr("telemetry_avg_voltage"), f"{df['voltage'].mean():.1f}")
+    col3.metric(tr("telemetry_avg_current"), f"{df['current'].mean():.3f}")
+    col4.metric(tr("telemetry_avg_power"), f"{df['active_power'].mean():.1f}")
+
+    fig = go.Figure()
+    for meter in df["meter_id"].unique()[:10]:
+        sub = df[df["meter_id"] == meter].sort_values("received_at")
+        fig.add_trace(go.Scatter(
+            x=sub["received_at"],
+            y=sub["active_power"],
+            mode="lines+markers",
+            name=meter,
+            line=dict(width=1.5),
+            marker=dict(size=4),
+        ))
+
+    fig.update_layout(
+        title=tr("telemetry_chart_title"),
+        xaxis_title=tr("telemetry_time_axis"),
+        yaxis_title=tr("telemetry_power_axis"),
+        height=380,
+        legend=dict(orientation="h", y=-0.25),
+        margin=dict(l=20, r=20, t=40, b=20),
+    )
+    apply_plotly_theme(fig, theme)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(
+        df[["received_at", "meter_id", "voltage", "current", "active_power"]].rename(
+            columns={
+                "received_at": tr("telemetry_time_col"),
+                "meter_id": tr("telemetry_meter_col"),
+                "voltage": tr("telemetry_voltage_col"),
+                "current": tr("telemetry_current_col"),
+                "active_power": tr("telemetry_power_col"),
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 # ========== ANA UYGULAMA ==========
 def main():
-    st.markdown('<p class="main-header">⚡ MASS-AI Dashboard</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Milli Akilli Sayac Sistemleri — Yapay Zeka Tabanli Anomali Tespit ve Kacak Elektrik Siniflandirma v2.0</p>', unsafe_allow_html=True)
+    ensure_ui_state()
 
-    features_df, raw_df = load_data()
+    data_source = st.session_state.get("data_source", "sample")
+    external_csv_path = st.session_state.get("external_csv_path", "")
+    load_error = None
+
+    try:
+        features_df, raw_df, data_meta = load_data(data_source, external_csv_path)
+    except Exception as exc:
+        if data_source == "external":
+            load_error = f"{tr('external_load_error')}: {exc}"
+            features_df, raw_df, data_meta = load_data("sample", "")
+            data_meta["source"] = "sample"
+        else:
+            raise
+
     features_df, metrics = run_models(features_df)
-    filtered_df, threshold = render_sidebar(features_df)
+    filtered_df, threshold = render_sidebar(features_df, data_meta)
 
-    # Tab'lar
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Genel Bakis",
-        "📉 Zaman Serisi Karsilastirma",
-        "🧠 Model Performansi",
-        "🔎 Musteri Detay",
-        "🔴 Canli Simulasyon"
+    theme = st.session_state.get("ui_theme", "dark")
+    inject_liquid_spotlight()
+    inject_theme_overrides(theme)
+    st.markdown(
+        f"""
+        <div class="hero-shell">
+            <p class="main-header">MASS-AI Dashboard</p>
+            <p class="sub-header">{tr('subtitle')}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if load_error:
+        st.warning(load_error)
+
+    if "best_model" in metrics:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"### {tr('active_model')}")
+        st.sidebar.success(metrics["best_model"])
+
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        tr("tab_overview"),
+        tr("tab_customers"),
+        tr("tab_timeseries"),
+        tr("tab_models"),
+        tr("tab_detail"),
+        tr("tab_simulation"),
+        tr("tab_telemetry"),
     ])
 
     with tab1:
         render_overview(filtered_df, threshold, raw_df)
 
     with tab2:
-        render_timeseries_comparison(features_df, raw_df)
+        render_customer_list(filtered_df)
 
     with tab3:
-        render_model_performance(features_df, metrics)
+        render_timeseries_comparison(features_df, raw_df)
 
     with tab4:
-        render_customer_detail(features_df, raw_df)
+        render_model_performance(features_df, metrics)
 
     with tab5:
+        render_customer_detail(features_df, raw_df)
+
+    with tab6:
         render_live_simulation(features_df, raw_df)
 
-    # Footer
-    st.markdown("---")
+    with tab7:
+        render_live_telemetry()
+
+    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     st.markdown(
-        "<div style='text-align:center; color:#999; font-size:0.85rem;'>"
+        "<div style='text-align:center; color:rgba(245,247,251,0.55); font-size:0.85rem;'>"
         "MASS-AI v2.0 | Omer Burak Kocak | Marmara Universitesi EEE | Mart 2026"
         "</div>",
         unsafe_allow_html=True
