@@ -78,7 +78,106 @@ The project combines a **desktop analyst workstation** (Tkinter), an **interacti
 
 ---
 
-## Project Structure
+## Models In Detail
+
+MASS-AI uses a layered model strategy: unsupervised detection for label-free deployment, supervised classifiers for maximum accuracy when labels are available, deep learning for raw time-series patterns, and a stacking ensemble that combines all signals into a single calibrated score.
+
+---
+
+### 1. Isolation Forest — Unsupervised Anomaly Detection
+
+**How it works:** Builds an ensemble of random decision trees. Anomalous customers (thieves) are isolated in fewer splits because they occupy sparse, unusual regions of the feature space. The fewer splits needed, the higher the anomaly score.
+
+**Why it matters here:** Requires **no labeled theft data** to train — making it deployable on day one of a smart meter rollout before any confirmed fraud cases have been collected.
+
+**Strengths:** Label-free, fast, interpretable score, handles high-dimensional feature spaces well.  
+**Limitations:** Struggles when theft patterns overlap heavily with legitimate low-consumption behavior (F1: 0.26 reflects this).  
+**Best used for:** Initial screening, cold-start deployments, regions with zero historical fraud labels.
+
+---
+
+### 2. XGBoost — Gradient Boosted Trees
+
+**How it works:** Builds trees sequentially, where each new tree corrects the residual errors of the previous one. Uses second-order gradient information (Newton boosting) for faster convergence and better regularization than standard gradient boosting.
+
+**Why it matters here:** Handles the class imbalance (88% normal vs 12% theft) well through `scale_pos_weight`. Produces native feature importance scores that directly answer: *"which consumption pattern drove this suspicion?"*
+
+**Strengths:** High accuracy, built-in regularization (L1/L2), fast training, excellent feature importance.  
+**Limitations:** Requires labeled training data; less interpretable than a single decision tree.  
+**Best used for:** Primary scoring engine when labeled historical fraud data is available.
+
+---
+
+### 3. Random Forest — Supervised Ensemble Classifier
+
+**How it works:** Trains hundreds of decision trees on random subsets of data and features (bagging + feature randomness). Final prediction is a majority vote across all trees. The randomness reduces overfitting significantly compared to a single deep tree.
+
+**Why it matters here:** Achieves the highest standalone ROC-AUC (0.9461) in this evaluation. Naturally robust to noisy features and outliers in consumption data. Per-tree predictions also provide a natural confidence estimate.
+
+**Strengths:** Robust to noise, provides reliable probability estimates, resistant to overfitting.  
+**Limitations:** Memory-heavy with many trees; less effective on very sparse or highly imbalanced datasets without weighting.  
+**Best used for:** Reliable baseline scorer and cross-validation reference model.
+
+---
+
+### 4. Gradient Boosting — Sequential Error Correction
+
+**How it works:** Similar to XGBoost in principle but uses first-order gradients (classic scikit-learn implementation). Each tree is fit to the negative gradient of the loss function — progressively reducing the prediction error with each stage.
+
+**Why it matters here:** Provides a strong secondary classifier that behaves differently from XGBoost due to different regularization and split strategies, making it a valuable member of the stacking ensemble.
+
+**Strengths:** Strong accuracy, well-understood behavior, good probability calibration.  
+**Limitations:** Slower to train than XGBoost; sensitive to learning rate and tree depth hyperparameters.  
+**Best used for:** Ensemble diversity — its slightly different error patterns complement XGBoost and Random Forest.
+
+---
+
+### 5. LSTM Autoencoder — Deep Learning Time-Series Model
+
+**How it works:** A sequence-to-sequence neural network (Long Short-Term Memory) trained to *reconstruct* normal consumption sequences. Anomalies produce high reconstruction error because the model was never trained on theft patterns — it only learned what "normal" looks like.
+
+The architecture:
+```
+Input sequence (180 days × features)
+        │
+   LSTM Encoder  →  compressed latent vector
+        │
+   LSTM Decoder  →  reconstructed sequence
+        │
+Reconstruction Error → Anomaly Score
+```
+
+**Why it matters here:** Operates directly on raw time-series without handcrafted features. Can detect novel theft patterns not represented in the engineered feature set — useful as consumption behaviors evolve over time.
+
+**Strengths:** No feature engineering required, detects novel/unseen patterns, models temporal dependencies naturally.  
+**Limitations:** Requires TensorFlow, more compute, harder to explain to field analysts, performs worse on short time windows (ROC-AUC: 0.748).  
+**Best used for:** Secondary validation signal, detecting pattern-drifted or novel fraud types.
+
+---
+
+### 6. Stacking Ensemble — Meta-Learner
+
+**How it works:** A two-layer system. In Layer 1, all five models above independently produce a probability score for each customer. In Layer 2, a meta-learner (Logistic Regression) is trained on these five scores as its input features — learning *how to weight and combine* each model's judgment.
+
+```
+Layer 1 (Base Models):
+  Isolation Forest  →  score_1
+  XGBoost           →  score_2   ┐
+  Random Forest     →  score_3   ├─► Meta-Learner → Final Risk Score
+  Gradient Boosting →  score_4   ┘
+  LSTM Autoencoder  →  score_5
+
+Layer 2 (Meta-Learner):
+  Logistic Regression trained on [score_1 … score_5]
+```
+
+**Why it matters here:** Compensates for each model's individual weaknesses. When Isolation Forest is uncertain (low-confidence anomaly) but XGBoost and Random Forest both flag a customer, the meta-learner can still produce a high risk score. The ensemble is more robust than any single model.
+
+**Strengths:** Best overall operational performance (F1: 0.8727, AP: 0.9004), robust to individual model failures.  
+**Limitations:** Requires all base models to be trained and loaded; adds latency compared to single-model inference.  
+**Best used for:** **Production scoring** — this is the default model for the desktop app and dashboard.
+
+---
 
 ```
 MASS_AI_UNIFIED_APP/
