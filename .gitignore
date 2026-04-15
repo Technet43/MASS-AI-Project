@@ -53,8 +53,8 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Sensitive / packed archives
-business_docs/mass_ai_mvp_business_pack.zip
+# Business / private documents
+business_docs/
 *.zip
 
 # Jupyter
