@@ -286,7 +286,7 @@ Turkey's TEDAŞ and BAŞKENTEDAŞ distribution companies face **28%+ electricity
 ## Author
 
 **Ömer Burak Koçak**  
-Electrical-Electronics Engineering, Marmara University (graduating 2026)  
+Electrical-Electronics Engineering, Marmara University (graduating 2028)  
 [kocakomerburak075@gmail.com](mailto:kocakomerburak075@gmail.com)
 
 ---
