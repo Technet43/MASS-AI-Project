@@ -43,9 +43,9 @@ MASS-AI is designed to bridge these gaps by combining context-aware analytics, e
 ## 3. Proposed Framework: MASS-AI
 MASS-AI is designed as a modular platform for electricity theft intelligence. Its architecture can be summarized as:
 
-\[
+$$
 \text{Raw or engineered smart meter data} \rightarrow \text{Feature engineering} \rightarrow \text{Risk scoring} \rightarrow \text{Alert generation} \rightarrow \text{Case review} \rightarrow \text{Pilot KPI feedback}
-\]
+$$
 
 ### 3.1 System overview
 The framework consists of four main layers:
@@ -67,24 +67,24 @@ Examples of features include daily and weekly variability, zero-consumption rati
 
 Conceptually, the feature space can be written as:
 
-\[
-X_{features} = X_{statistical} + X_{temporal} + X_{contextual}
-\]
+$$
+X_{\text{features}} = X_{\text{statistical}} + X_{\text{temporal}} + X_{\text{contextual}}
+$$
 
 ### 3.4 Ensemble learning and risk scoring
 The main prediction engine is built around ensemble learning. Baseline models include Random Forest and XGBoost. More advanced versions of the pipeline also include stacking, calibration, and threshold tuning.
 
-Given a customer feature vector \(x\), the model estimates a theft-related risk probability:
+Given a customer feature vector $x$, the model estimates a theft-related risk probability:
 
-\[
+$$
 p(\text{theft} \mid x)
-\]
+$$
 
 This score is then transformed into an operational priority using confidence and loss-aware logic:
 
-\[
+$$
 \text{Priority} = 0.5 \cdot \text{Risk} + 0.25 \cdot \text{Confidence} + 0.25 \cdot \text{Normalized Loss}
-\]
+$$
 
 ### 3.5 Explainability layer
 MASS-AI uses explanation summaries to answer the practical question: **Why is this customer suspicious?** Local explanation mechanisms summarize the most influential signals behind each risk score.
@@ -121,17 +121,17 @@ Explainability analyses showed that the most influential features often included
 ### 5.5 Pilot KPI layer
 Beyond model metrics, MASS-AI supports pilot metrics such as:
 
-\[
+$$
 \text{Hit-rate} = \frac{\text{confirmed fraud cases}}{\text{reviewed cases}}
-\]
+$$
 
-\[
+$$
 \text{Review coverage} = \frac{\text{reviewed cases}}{\text{total high-risk cases}}
-\]
+$$
 
-\[
+$$
 \text{False positive rate} = \frac{\text{rejected suspicious cases}}{\text{reviewed cases}}
-\]
+$$
 
 ## 6. Discussion
 The results demonstrate that context-aware, feature-based ensemble models can perform strongly on theft detection tasks, particularly when supported by explainability and workflow integration. From a research perspective, the study confirms that synthetic scenario diversity can provide a useful experimental foundation when real-world theft labels are limited. From an operational perspective, the work suggests that model value is significantly enhanced when predictions are transformed into structured alerts, prioritized cases, and measurable pilot outcomes.
