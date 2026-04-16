@@ -20,9 +20,26 @@
 
 <br/>
 
-> **MASS AI** is a production-ready machine learning platform that detects electricity theft and consumption anomalies from smart meter data. Built for Turkey's MASS initiative (50 million smart meters by 2028), it targets regions where theft rates exceed **28%** — causing an estimated **₺10B+ in annual losses**.
+> **MASS AI** is a pilot-ready decision-support platform that detects electricity theft and consumption anomalies from smart meter data. Built for Turkey's MASS initiative (50 million smart meters by 2028), it targets regions where theft rates exceed **28%** — causing an estimated **₺10B+ in annual losses**.
 
 <br/>
+
+---
+
+## Day 1 Alignment (2026-04-16)
+
+This repository is currently positioned as a **utility pilot / proof-of-value platform** (not a full production deployment).
+
+- Official product scope: analyst-facing decision support for theft/anomaly triage, evidence review, and case workflow.
+- Production scoring path (`project/mass_ai_engine.py`): Isolation Forest, XGBoost, Random Forest, Gradient Boosting, and a Stacking Ensemble (meta-learner over XGBoost + Random Forest + Gradient Boosting).
+- Realtime ingest scoring (`project/realtime_ingest/inference.py`): 3-feature anomaly scoring (`p_avg_1h`, `v_std_1h`, `i_peak_1h`) with Isolation Forest.
+- LSTM Autoencoder and SHAP references are retained in this repo as research/legacy content, not the primary runtime path.
+
+Canonical Day 1 references:
+- [Day 1 Alignment](docs/DAY1_ALIGNMENT.md)
+- [Canonical Telemetry Schema](docs/CANONICAL_TELEMETRY_SCHEMA.md)
+- [Day 1 CSV Template](project/realtime_ingest/examples/canonical_telemetry_template.csv)
+- [Project Task Report](PROJE_ICIN_YAPILACAKLAR_RAPORU.md)
 
 ---
 
@@ -46,7 +63,7 @@
 
 | | Feature | Description |
 |---|---|---|
-| 🤖 | **6 ML Models** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting, LSTM Autoencoder, Stacking Ensemble |
+| 🤖 | **5 Production Scorers + LSTM (Research)** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting, Stacking Ensemble (+ optional LSTM Autoencoder path) |
 | 🔍 | **8 Theft Patterns** | Meter tampering, cable bypass, peak clipping, gradual reduction, intermittent bypass, and more |
 | 🧮 | **20+ Features** | Statistical, temporal, and anomaly-based feature extraction per customer |
 | 📊 | **ROC-AUC 0.9428** | Research-grade stacking ensemble accuracy on synthetic Turkish smart meter data |
@@ -178,18 +195,16 @@ Operates directly on raw time-series **without handcrafted features**, detecting
 <summary><b>🏆 Stacking Ensemble — Meta-Learner (Default Production Model)</b></summary>
 <br/>
 
-A two-layer system. In **Layer 1**, all five models independently score each customer. In **Layer 2**, a Logistic Regression meta-learner is trained on those five scores — learning *how to weight and combine* each model's judgment.
+A two-layer system. In **Layer 1**, three supervised base models (XGBoost, Random Forest, Gradient Boosting) score each customer. In **Layer 2**, a Logistic Regression meta-learner combines those probabilities into the final risk score.
 
 ```
-Layer 1 — Base Models:
-  Isolation Forest  ──►  score_1  ┐
-  XGBoost           ──►  score_2  │
-  Random Forest     ──►  score_3  ├──►  Meta-Learner  ──►  Final Risk Score
-  Gradient Boosting ──►  score_4  │     (Logistic Regression)
-  LSTM Autoencoder  ──►  score_5  ┘
+Layer 1 - Base Models:
+  XGBoost           --> score_1  \
+  Random Forest     --> score_2   --> Meta-Learner (Logistic Regression) --> Final Risk Score
+  Gradient Boosting --> score_3  /
 ```
 
-Compensates for each model's individual weaknesses. When Isolation Forest is uncertain but XGBoost and Random Forest both flag a customer, the meta-learner still produces a high risk score.
+Compensates for each model's individual weaknesses. When base models disagree, the meta-learner balances precision vs recall to keep high-risk customers near the top of the investigation queue.
 
 | | |
 |---|---|
@@ -214,10 +229,10 @@ Feature Engineering  ──  20+ features
         │
         ▼
  ┌──────────────────────────────────────────┐
- │              Model Ensemble              │
- │  Isolation Forest   XGBoost             │
- │  Random Forest      Gradient Boosting   │
- │  LSTM Autoencoder  ──►  Stacking Meta   │
+ │                Model Layer               │
+ │  Isolation Forest (parallel baseline)   │
+ │  XGBoost + Random Forest + Grad Boost   │
+ │                    ──►  Stacking Meta   │
  └──────────────────────────────────────────┘
         │
         ▼
@@ -315,7 +330,7 @@ cp my_meter_data.csv project/watch/
 
 ### File format requirements
 
-The file must be a valid CSV with at minimum a customer/meter ID column and consumption columns (wide time-series format: one row per customer, date columns as headers). See `project/realtime_ingest/data_loader.py --template` for a sample.
+The file must be a valid **long-format telemetry CSV** with at minimum: `meter_id`, `voltage`, `current`, `active_power`. Optional: `timestamp` (UTC recommended). One row should represent one meter reading event. See `project/realtime_ingest/data_loader.py --template` for a sample.
 
 ### Logs
 
