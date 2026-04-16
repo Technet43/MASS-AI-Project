@@ -34,6 +34,9 @@ class LauncherApp:
         self.root.geometry("1080x720")
         self.root.minsize(900, 620)
         self.style = ttk.Style()
+        # TODO: track Streamlit subprocess for lifecycle management
+        self._streamlit_proc: subprocess.Popen | None = None
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         initial_theme_name = normalize_theme_name(os.environ.get("MASS_AI_THEME") or load_theme_preference() or DEFAULT_THEME_NAME)
         self.theme_name_var = tk.StringVar(value=initial_theme_name)
         self.theme = build_glass_theme(self.theme_name_var.get())
@@ -65,7 +68,24 @@ class LauncherApp:
         if not target.exists():
             messagebox.showerror("MASS-AI", "dashboard/app.py was not found.")
             return
-        self.run_command([sys.executable, "-m", "streamlit", "run", str(target)], cwd=PROJECT_DIR)
+        # TODO: stop any existing Streamlit instance before launching a new one
+        if self._streamlit_proc is not None and self._streamlit_proc.poll() is None:
+            self._streamlit_proc.terminate()
+        try:
+            cmd = [sys.executable, "-m", "streamlit", "run", str(target)]
+            self._streamlit_proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, env=self.command_env())
+        except Exception as exc:
+            messagebox.showerror("MASS-AI", f"The command could not be launched:\n{exc}")
+
+    def _on_close(self):
+        # TODO: terminate Streamlit server when the launcher window is closed
+        if self._streamlit_proc is not None and self._streamlit_proc.poll() is None:
+            try:
+                self._streamlit_proc.terminate()
+                self._streamlit_proc.wait(timeout=5)
+            except Exception:
+                pass
+        self.root.destroy()
 
     def install_requirements(self):
         req = PROJECT_DIR / "requirements.txt"

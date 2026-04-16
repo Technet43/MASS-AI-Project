@@ -293,6 +293,36 @@ MASS_AI_UNIFIED_APP/
 
 ---
 
+## Realtime Ingest
+
+The dashboard includes a **watchdog-based file monitor** that automatically processes new data files without manual interaction.
+
+### How it works
+
+1. The dashboard starts a background `watchdog` observer on `project/watch/` when Streamlit launches.
+2. Drop any `.csv` or `.json` file into the `project/watch/` directory.
+3. The observer detects the file, writes a sentinel, and the dashboard auto-reloads with the new data on the next Streamlit poll cycle — no browser refresh needed.
+
+### Setup
+
+```bash
+# Install watchdog (included in requirements-full.txt)
+pip install watchdog>=3.0
+
+# Drop a CSV into the watch directory to trigger auto-reload
+cp my_meter_data.csv project/watch/
+```
+
+### File format requirements
+
+The file must be a valid CSV with at minimum a customer/meter ID column and consumption columns (wide time-series format: one row per customer, date columns as headers). See `project/realtime_ingest/data_loader.py --template` for a sample.
+
+### Logs
+
+All ingest events are written to `logs/mass_ai.log` alongside model training and scoring events.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -304,11 +334,11 @@ cd MASS-AI-Project
 INSTALL_REQUIREMENTS.bat
 
 # 2 — Install (manual)
-pip install -r project/requirements-full.txt   # full stack
+pip install -r project/requirements-full.txt   # full stack (includes watchdog)
 pip install -r project/requirements-desktop.txt  # desktop only
 
 # 3 — Launch
-START_MASS_AI.bat                              # unified launcher
+START_MASS_AI.bat                              # unified launcher (Streamlit auto-managed)
 streamlit run project/dashboard/app.py         # web dashboard only
 python project/legacy_pipeline/run_pipeline.py --quick  # research pipeline
 ```

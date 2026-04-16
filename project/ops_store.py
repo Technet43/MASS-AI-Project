@@ -360,8 +360,15 @@ class OpsStore:
 
     def list_cases(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         filters = filters or {}
+        # TODO: select only required columns instead of SELECT * for performance
+        _CASE_COLS = (
+            "customer_id, case_title, profile, fraud_pattern, risk_band, fraud_probability, "
+            "risk_score, est_monthly_loss, priority_index, recommended_action, status, priority, "
+            "follow_up_at, resolution_reason, created_at, updated_at, last_analysis_at, "
+            "last_seen_run_id, source_name"
+        )
         with self._managed_connection() as conn:
-            rows = [dict(row) for row in conn.execute("SELECT * FROM cases")]
+            rows = [dict(row) for row in conn.execute(f"SELECT {_CASE_COLS} FROM cases")]
 
         if not rows:
             return pd.DataFrame(columns=case_columns())
@@ -412,7 +419,14 @@ class OpsStore:
             return None
 
         with self._managed_connection() as conn:
-            row = conn.execute("SELECT * FROM cases WHERE customer_id = ?", (customer_key,)).fetchone()
+            # TODO: select only required columns instead of SELECT *
+            row = conn.execute(
+                "SELECT customer_id, case_title, profile, fraud_pattern, risk_band, fraud_probability, "
+                "risk_score, est_monthly_loss, priority_index, recommended_action, status, priority, "
+                "follow_up_at, resolution_reason, created_at, updated_at, last_analysis_at, "
+                "last_seen_run_id, source_name FROM cases WHERE customer_id = ?",
+                (customer_key,),
+            ).fetchone()
         return self._row_to_dict(row)
 
     def update_case(

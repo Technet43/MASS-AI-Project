@@ -11,3 +11,4 @@ tensorflow>=2.15
 streamlit>=1.30
 plotly>=5.18
 openpyxl>=3.1
+watchdog>=3.0

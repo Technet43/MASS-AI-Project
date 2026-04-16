@@ -17,16 +17,102 @@ Yazar: Omer Burak Kocak
 Calistirma: streamlit run dashboard/app.py
 """
 
-import streamlit as st
-import streamlit.components.v1 as components
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import time
+import logging
 import os
 import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+import streamlit.components.v1 as components
+from plotly.subplots import make_subplots
+
+# TODO: centralised logging — mirrors mass_ai_engine setup
+_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(_LOG_DIR / "mass_ai.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+_logger = logging.getLogger("dashboard")
+
+# TODO: watchdog-based realtime ingest — monitors WATCH_DIR for new CSV/JSON drops
+_WATCH_DIR = Path(__file__).resolve().parent.parent / "watch"
+_WATCH_DIR.mkdir(parents=True, exist_ok=True)
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    _WATCHDOG_AVAILABLE = True
+except ImportError:
+    _WATCHDOG_AVAILABLE = False
+    _logger.warning("watchdog not installed — realtime file monitoring disabled; pip install watchdog>=3.0")
+
+
+class _IngestHandler(FileSystemEventHandler if _WATCHDOG_AVAILABLE else object):
+    """Watches WATCH_DIR for new .csv/.json files and signals Streamlit to rerun."""
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        src = Path(event.src_path)
+        if src.suffix.lower() not in {".csv", ".json"}:
+            return
+        _logger.info("Realtime ingest: new file detected → %s", src.name)
+        # Write a sentinel so the dashboard can pick up the latest file on next poll
+        sentinel = _WATCH_DIR / ".latest_ingest"
+        try:
+            sentinel.write_text(str(src), encoding="utf-8")
+        except Exception as exc:
+            _logger.error("Realtime ingest: could not write sentinel: %s", exc)
+
+
+def _start_ingest_watcher() -> "Observer | None":
+    """Start a background watchdog observer once per Streamlit process."""
+    if not _WATCHDOG_AVAILABLE:
+        return None
+    if st.session_state.get("_ingest_observer_started"):
+        return None
+    try:
+        handler = _IngestHandler()
+        observer = Observer()
+        observer.schedule(handler, str(_WATCH_DIR), recursive=False)
+        observer.daemon = True
+        observer.start()
+        st.session_state["_ingest_observer_started"] = True
+        _logger.info("Realtime ingest watcher started on %s", _WATCH_DIR)
+        return observer
+    except Exception as exc:
+        _logger.error("Could not start ingest watcher: %s", exc)
+        return None
+
+
+def poll_ingest_dir() -> Path | None:
+    """Return the path of the latest ingested file if a new one arrived, else None.
+
+    Reads the sentinel written by _IngestHandler and clears it so the same file
+    is not processed twice.
+    """
+    sentinel = _WATCH_DIR / ".latest_ingest"
+    if not sentinel.exists():
+        return None
+    try:
+        raw = sentinel.read_text(encoding="utf-8").strip()
+        sentinel.unlink(missing_ok=True)
+        path = Path(raw)
+        if path.exists():
+            return path
+    except Exception as exc:
+        _logger.error("poll_ingest_dir: %s", exc)
+    return None
 
 # psycopg2 is optional — live telemetry tab is disabled if not installed.
 try:
@@ -230,198 +316,246 @@ st.set_page_config(
 # ========== CUSTOM CSS ==========
 st.markdown("""
 <style>
+    /* ── Design tokens ──────────────────────────────────────────────── */
     :root {
-        --glass-bg: rgba(255, 255, 255, 0.045);
-        --glass-border: rgba(255, 255, 255, 0.12);
-        --glass-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
-        --glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.16);
-        --glass-lowlight: inset 0 -1px 1px rgba(0, 0, 0, 0.24);
-        --text-main: #f5f7fb;
-        --text-muted: rgba(245, 247, 251, 0.62);
-        --line-soft: rgba(255, 255, 255, 0.08);
+        --accent:        #38bdf8;
+        --accent-soft:   rgba(56, 189, 248, 0.18);
+        --accent-glow:   rgba(56, 189, 248, 0.35);
+        --danger:        rgba(251, 113, 113, 1);
+        --danger-soft:   rgba(251, 113, 113, 0.18);
+        --success:       rgba(52, 211, 153, 1);
+        --success-soft:  rgba(52, 211, 153, 0.15);
+
+        --glass-bg:        rgba(255,255,255,0.042);
+        --glass-border:    rgba(255,255,255,0.11);
+        --glass-hi:        inset 0 1px 0 rgba(255,255,255,0.18);
+        --glass-lo:        inset 0 -1px 0 rgba(0,0,0,0.22);
+        --glass-shadow:    0 20px 70px rgba(0,0,0,0.44);
+
+        --text-main:   #f0f4ff;
+        --text-muted:  rgba(240,244,255,0.52);
+        --text-dim:    rgba(240,244,255,0.30);
+        --line-soft:   rgba(255,255,255,0.07);
+
+        --radius-card: 26px;
+        --radius-btn:  16px;
+        --ease-smooth: cubic-bezier(0.34, 1.22, 0.64, 1);
+        --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
     }
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+
+    /* ── Scrollbar ──────────────────────────────────────────────────── */
+    * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }
+    *::-webkit-scrollbar { width: 5px; height: 5px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 99px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.24); }
+
+    /* ── Base background ────────────────────────────────────────────── */
+    html, body,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stApp"] {
         background:
-            radial-gradient(circle at 15% 20%, rgba(255,255,255,0.08), transparent 22%),
-            radial-gradient(circle at 85% 12%, rgba(255,255,255,0.05), transparent 20%),
-            radial-gradient(circle at 50% 100%, rgba(255,255,255,0.06), transparent 30%),
-            linear-gradient(180deg, #060709 0%, #0a0d11 48%, #050608 100%);
+            radial-gradient(ellipse 80% 50% at 10% -5%,  rgba(56,189,248,0.07), transparent),
+            radial-gradient(ellipse 60% 40% at 90%  5%,  rgba(129,140,248,0.06), transparent),
+            radial-gradient(ellipse 70% 60% at 50% 110%, rgba(56,189,248,0.04), transparent),
+            linear-gradient(175deg, #05070b 0%, #080c12 55%, #040609 100%);
         color: var(--text-main);
+        font-feature-settings: "kern" 1, "liga" 1, "ss01" 1;
     }
-    [data-testid="stAppViewContainer"] > .main {
-        background: transparent;
-    }
+    [data-testid="stAppViewContainer"] > .main { background: transparent; }
+
+    /* ── Top header bar ─────────────────────────────────────────────── */
     [data-testid="stHeader"] {
-        background: rgba(5, 6, 8, 0.38);
-        backdrop-filter: blur(26px);
-        -webkit-backdrop-filter: blur(26px);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        background: rgba(5,7,11,0.55);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        border-bottom: 1px solid rgba(255,255,255,0.055);
     }
+
+    /* ── Sidebar ────────────────────────────────────────────────────── */
     [data-testid="stSidebar"] {
         background:
-            linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025)),
-            rgba(8, 10, 14, 0.78);
-        border-right: 1px solid rgba(255,255,255,0.08);
-        box-shadow:
-            inset 0 1px 1px rgba(255,255,255,0.12),
-            18px 0 46px rgba(0,0,0,0.22);
-        backdrop-filter: blur(32px);
-        -webkit-backdrop-filter: blur(32px);
+            linear-gradient(160deg, rgba(56,189,248,0.04) 0%, transparent 40%),
+            linear-gradient(180deg, rgba(255,255,255,0.048), rgba(255,255,255,0.022)),
+            rgba(7,9,14,0.82);
+        border-right: 1px solid rgba(255,255,255,0.07);
+        box-shadow: 20px 0 56px rgba(0,0,0,0.28), var(--glass-hi);
+        backdrop-filter: blur(36px);
+        -webkit-backdrop-filter: blur(36px);
     }
-    [data-testid="stSidebar"] > div:first-child {
-        background: transparent;
-    }
-    [data-testid="stSidebar"] * {
-        color: var(--text-main) !important;
-    }
-    [data-testid="stSidebar"] hr,
-    .stMarkdown hr {
-        border-color: var(--line-soft);
-    }
+    [data-testid="stSidebar"] > div:first-child { background: transparent; }
+    [data-testid="stSidebar"] * { color: var(--text-main) !important; }
+    [data-testid="stSidebar"] hr, .stMarkdown hr { border-color: var(--line-soft); }
+
+    /* ── Typography ─────────────────────────────────────────────────── */
     .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        letter-spacing: -0.03em;
-        color: var(--text-main);
-        margin-bottom: 0.25rem;
-        text-shadow: 0 0 24px rgba(255,255,255,0.12);
+        font-size: 2.6rem;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1.12;
+        margin: 0 0 0.2rem;
+        background: linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.72) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        filter: drop-shadow(0 0 28px rgba(255,255,255,0.14));
     }
     .sub-header {
-        font-size: 1rem;
+        font-size: 0.93rem;
         color: var(--text-muted);
-        margin-top: -8px;
-        margin-bottom: 22px;
+        margin: 0;
+        letter-spacing: 0.01em;
     }
+    h1, h2, h3, h4 { letter-spacing: -0.02em; }
+    .stMarkdown h3 { font-size: 1.15rem; font-weight: 700; color: var(--text-main); }
+    .stMarkdown h4 { font-size: 1rem;    font-weight: 600; color: var(--text-main); }
+
+    /* ── Hero card ──────────────────────────────────────────────────── */
     .hero-shell {
         position: relative;
         overflow: hidden;
-        border-radius: 30px;
-        padding: 1.3rem 1.4rem 1.2rem 1.4rem;
-        margin-bottom: 1.15rem;
+        border-radius: 32px;
+        padding: 1.5rem 1.8rem 1.4rem;
+        margin-bottom: 1.2rem;
         background:
-            linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
-            rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.14);
+            linear-gradient(135deg, rgba(56,189,248,0.06) 0%, transparent 50%),
+            linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.018));
+        border: 1px solid rgba(255,255,255,0.13);
         box-shadow:
-            0 24px 90px rgba(0,0,0,0.34),
-            inset 0 1px 1px rgba(255,255,255,0.15),
-            inset 0 -1px 1px rgba(0,0,0,0.20);
-        backdrop-filter: blur(32px);
-        -webkit-backdrop-filter: blur(32px);
+            var(--glass-shadow),
+            var(--glass-hi),
+            var(--glass-lo),
+            0 0 0 1px rgba(56,189,248,0.06);
+        backdrop-filter: blur(36px);
+        -webkit-backdrop-filter: blur(36px);
     }
     .hero-shell::before {
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(135deg, rgba(255,255,255,0.14), transparent 40%, transparent 70%, rgba(255,255,255,0.05));
+        background: linear-gradient(135deg,
+            rgba(255,255,255,0.13) 0%,
+            transparent 38%,
+            transparent 65%,
+            rgba(56,189,248,0.07) 100%);
         pointer-events: none;
     }
-    .alert-box {
-        background: rgba(255, 255, 255, 0.045);
-        border-left: 4px solid rgba(255, 122, 122, 0.95);
-        padding: 12px 16px;
-        border-radius: 18px;
-        margin: 8px 0;
-        box-shadow: var(--glass-shadow), var(--glass-highlight), var(--glass-lowlight);
-        backdrop-filter: blur(24px);
+    .hero-shell::after {
+        content: "";
+        position: absolute;
+        top: -1px; left: 10%; right: 10%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.30), transparent);
+        pointer-events: none;
     }
-    .safe-box {
-        background: rgba(255, 255, 255, 0.045);
-        border-left: 4px solid rgba(182, 255, 209, 0.88);
-        padding: 12px 16px;
-        border-radius: 18px;
-        margin: 8px 0;
-        box-shadow: var(--glass-shadow), var(--glass-highlight), var(--glass-lowlight);
-        backdrop-filter: blur(24px);
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.73rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        background: var(--accent-soft);
+        border: 1px solid rgba(56,189,248,0.28);
+        border-radius: 99px;
+        padding: 3px 12px;
+        margin-bottom: 0.55rem;
     }
-    .live-indicator {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        background: #ffffff;
-        border-radius: 50%;
-        margin-right: 6px;
-        box-shadow: 0 0 14px rgba(255,255,255,0.75);
-        animation: blink 1s infinite;
-    }
-    @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 2rem;
-        color: var(--text-main);
-        text-shadow: 0 0 16px rgba(255,255,255,0.08);
-    }
-    div[data-testid="stMetricLabel"],
-    div[data-testid="stMetricDelta"] {
-        color: var(--text-muted) !important;
-    }
+
+    /* ── Metric cards ───────────────────────────────────────────────── */
     [data-testid="stMetric"] {
+        position: relative;
+        overflow: hidden;
         background:
-            linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025)),
-            rgba(255,255,255,0.02);
-        border: 1px solid rgba(255,255,255,0.10);
-        border-radius: 24px;
-        padding: 1rem 1.1rem;
+            linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.020));
+        border: 1px solid rgba(255,255,255,0.095);
+        border-radius: var(--radius-card);
+        padding: 1.1rem 1.2rem 1rem;
         box-shadow:
-            0 18px 60px rgba(0,0,0,0.22),
-            inset 0 1px 1px rgba(255,255,255,0.14),
-            inset 0 -1px 1px rgba(0,0,0,0.18);
-        backdrop-filter: blur(28px);
-        -webkit-backdrop-filter: blur(28px);
-        transition: transform 220ms ease, box-shadow 220ms ease, background 220ms ease;
+            0 16px 52px rgba(0,0,0,0.24),
+            var(--glass-hi),
+            var(--glass-lo);
+        backdrop-filter: blur(30px);
+        -webkit-backdrop-filter: blur(30px);
+        transition: transform 240ms var(--ease-out),
+                    box-shadow 240ms var(--ease-out),
+                    border-color 240ms ease;
+    }
+    [data-testid="stMetric"]::after {
+        content: "";
+        position: absolute;
+        top: 0; left: 12%; right: 12%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(56,189,248,0.45), transparent);
+        opacity: 0;
+        transition: opacity 240ms ease;
     }
     [data-testid="stMetric"]:hover {
-        transform: scale(1.02);
-        background:
-            linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.035)),
-            rgba(255,255,255,0.03);
+        transform: translateY(-3px) scale(1.015);
+        border-color: rgba(56,189,248,0.22);
         box-shadow:
-            0 24px 72px rgba(0,0,0,0.28),
-            inset 0 1px 1px rgba(255,255,255,0.16),
-            inset 0 -1px 1px rgba(0,0,0,0.22);
+            0 28px 72px rgba(0,0,0,0.32),
+            0 0 0 1px rgba(56,189,248,0.12),
+            var(--glass-hi), var(--glass-lo);
     }
+    [data-testid="stMetric"]:hover::after { opacity: 1; }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.95rem;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: var(--text-main);
+    }
+    div[data-testid="stMetricLabel"] { color: var(--text-muted) !important; font-size: 0.82rem; }
+    div[data-testid="stMetricDelta"]  { color: var(--text-muted) !important; font-size: 0.80rem; }
+
+    /* ── Tab bar ────────────────────────────────────────────────────── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background: rgba(255,255,255,0.02);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 22px;
-        padding: 0.35rem;
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
+        gap: 4px;
+        background: rgba(255,255,255,0.025);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 20px;
+        padding: 5px;
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        box-shadow: var(--glass-hi), var(--glass-lo);
     }
     .stTabs [data-baseweb="tab"] {
         height: auto;
-        padding: 10px 18px;
+        padding: 9px 20px;
+        font-size: 0.88rem;
         font-weight: 600;
-        border-radius: 18px;
+        border-radius: 15px;
         color: var(--text-muted);
-        transition: all 180ms ease;
+        transition: color 180ms ease, background 180ms ease;
+        letter-spacing: 0.005em;
+    }
+    .stTabs [data-baseweb="tab"]:hover:not([aria-selected="true"]) {
+        color: rgba(240,244,255,0.80);
+        background: rgba(255,255,255,0.04);
     }
     .stTabs [aria-selected="true"] {
-        background: rgba(255,255,255,0.08) !important;
-        color: var(--text-main) !important;
+        background:
+            linear-gradient(180deg, rgba(56,189,248,0.14), rgba(56,189,248,0.06)) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(56,189,248,0.22) !important;
         box-shadow:
-            inset 0 1px 1px rgba(255,255,255,0.14),
-            0 10px 26px rgba(0,0,0,0.22);
+            inset 0 1px 0 rgba(255,255,255,0.18),
+            0 6px 20px rgba(0,0,0,0.22),
+            0 0 14px rgba(56,189,248,0.10);
     }
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-    [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlockBorderWrapper"] {
-        background: transparent;
-    }
+
+    /* ── Glass panel (charts, dataframes, expanders) ────────────────── */
+    .block-container { padding-top: 1.8rem; padding-bottom: 2rem; }
+
     div[data-testid="stPlotlyChart"],
     div[data-testid="stDataFrame"],
     div[data-testid="stTable"],
     div[data-testid="stExpander"],
     div[data-testid="stAlert"],
-    div[data-testid="stForm"],
-    div[data-testid="stMarkdownContainer"]:has(h3),
-    div[data-testid="stMarkdownContainer"]:has(h4) {
-        border-radius: 28px;
+    div[data-testid="stForm"] {
+        border-radius: var(--radius-card);
     }
     div[data-testid="stPlotlyChart"],
     div[data-testid="stDataFrame"],
@@ -430,122 +564,214 @@ st.markdown("""
     div[data-testid="stMultiSelect"],
     div[data-testid="stSlider"],
     div[data-testid="stNumberInput"],
-    div[data-testid="stTextInput"],
-    div[data-testid="stButton"] > button,
-    div[data-testid="stDownloadButton"] > button {
+    div[data-testid="stTextInput"] {
         background:
-            linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.022)),
-            rgba(255,255,255,0.02);
-        border: 1px solid rgba(255,255,255,0.10) !important;
+            linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+        border: 1px solid rgba(255,255,255,0.09) !important;
         box-shadow:
-            0 18px 60px rgba(0,0,0,0.18),
-            inset 0 1px 1px rgba(255,255,255,0.12),
-            inset 0 -1px 1px rgba(0,0,0,0.18);
+            0 14px 48px rgba(0,0,0,0.20),
+            var(--glass-hi), var(--glass-lo);
         backdrop-filter: blur(28px);
         -webkit-backdrop-filter: blur(28px);
     }
     div[data-testid="stPlotlyChart"],
-    div[data-testid="stDataFrame"] {
-        padding: 0.7rem;
-    }
+    div[data-testid="stDataFrame"] { padding: 0.6rem; }
+
+    /* ── Inputs ─────────────────────────────────────────────────────── */
     div[data-baseweb="select"] > div,
     div[data-testid="stTextInput"] input,
     textarea,
     [data-baseweb="base-input"] {
-        background: rgba(255,255,255,0.02) !important;
+        background: rgba(255,255,255,0.025) !important;
         color: var(--text-main) !important;
     }
+    div[data-testid="stTextInput"]:focus-within,
+    div[data-baseweb="select"]:focus-within {
+        border-color: rgba(56,189,248,0.35) !important;
+        box-shadow: 0 0 0 3px rgba(56,189,248,0.08) !important;
+    }
+
+    /* ── Slider ─────────────────────────────────────────────────────── */
     .stSlider [data-baseweb="slider"] > div > div {
-        background: linear-gradient(90deg, rgba(255,255,255,0.85), rgba(255,255,255,0.35)) !important;
+        background: linear-gradient(90deg, var(--accent), rgba(56,189,248,0.40)) !important;
     }
     .stSlider [role="slider"] {
         background: #ffffff !important;
-        box-shadow: 0 0 18px rgba(255,255,255,0.55);
+        box-shadow: 0 0 0 3px rgba(56,189,248,0.40), 0 2px 8px rgba(0,0,0,0.30) !important;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────── */
+    div[data-testid="stButton"] > button,
+    div[data-testid="stDownloadButton"] > button {
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.028)) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        box-shadow: 0 10px 32px rgba(0,0,0,0.20), var(--glass-hi) !important;
+        backdrop-filter: blur(20px);
     }
     .stButton > button,
     .stDownloadButton > button {
         color: var(--text-main) !important;
-        border-radius: 18px !important;
-        min-height: 2.9rem;
-        transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+        border-radius: var(--radius-btn) !important;
+        min-height: 2.75rem;
+        font-weight: 600;
+        font-size: 0.88rem;
+        letter-spacing: 0.01em;
+        transition:
+            transform 200ms var(--ease-out),
+            box-shadow 200ms ease,
+            border-color 200ms ease;
     }
     .stButton > button:hover,
     .stDownloadButton > button:hover {
-        transform: scale(1.02);
-        background:
-            linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03)),
-            rgba(255,255,255,0.03) !important;
+        transform: translateY(-2px);
+        border-color: rgba(56,189,248,0.32) !important;
         box-shadow:
-            0 22px 70px rgba(0,0,0,0.26),
-            inset 0 1px 1px rgba(255,255,255,0.15),
-            inset 0 -1px 1px rgba(0,0,0,0.20);
+            0 18px 48px rgba(0,0,0,0.28),
+            0 0 0 1px rgba(56,189,248,0.16),
+            var(--glass-hi) !important;
     }
     .stButton > button:active,
-    .stDownloadButton > button:active {
-        transform: scale(0.98);
+    .stDownloadButton > button:active { transform: translateY(0) scale(0.98); }
+    button[kind="primary"] {
+        background: linear-gradient(135deg, rgba(56,189,248,0.25), rgba(56,189,248,0.10)) !important;
+        border-color: rgba(56,189,248,0.40) !important;
+        box-shadow: 0 10px 32px rgba(56,189,248,0.12), var(--glass-hi) !important;
     }
-    .stMarkdown, p, label, span, .stCaption, .stText, h1, h2, h3, h4 {
-        color: var(--text-main);
+    button[kind="primary"]:hover {
+        background: linear-gradient(135deg, rgba(56,189,248,0.35), rgba(56,189,248,0.15)) !important;
+        box-shadow: 0 18px 48px rgba(56,189,248,0.20), 0 0 0 1px rgba(56,189,248,0.35), var(--glass-hi) !important;
     }
-    .stCaption {
-        color: var(--text-muted) !important;
+
+    /* ── Alert / Safe boxes ─────────────────────────────────────────── */
+    .alert-box {
+        background: var(--danger-soft);
+        border-left: 3px solid var(--danger);
+        padding: 11px 16px;
+        border-radius: 16px;
+        margin: 8px 0;
+        box-shadow: 0 4px 20px rgba(251,113,113,0.12);
+        backdrop-filter: blur(20px);
     }
-    [data-testid="stDataFrame"] * {
-        color: var(--text-main) !important;
+    .safe-box {
+        background: var(--success-soft);
+        border-left: 3px solid var(--success);
+        padding: 11px 16px;
+        border-radius: 16px;
+        margin: 8px 0;
+        box-shadow: 0 4px 20px rgba(52,211,153,0.10);
+        backdrop-filter: blur(20px);
     }
+
+    /* ── Live indicator ─────────────────────────────────────────────── */
+    .live-indicator {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        background: var(--accent);
+        border-radius: 50%;
+        margin-right: 7px;
+        box-shadow: 0 0 0 0 var(--accent-glow);
+        animation: pulse-ring 1.6s cubic-bezier(0.4,0,0.6,1) infinite;
+    }
+    @keyframes pulse-ring {
+        0%   { box-shadow: 0 0 0 0   var(--accent-glow); }
+        60%  { box-shadow: 0 0 0 7px rgba(56,189,248,0); }
+        100% { box-shadow: 0 0 0 0   rgba(56,189,248,0); }
+    }
+
+    /* ── Glass divider ──────────────────────────────────────────────── */
     .glass-divider {
         height: 1px;
-        margin: 1rem 0 1.4rem;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
+        margin: 1.1rem 0 1.5rem;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.13), transparent);
     }
+
+    /* ── Misc text ──────────────────────────────────────────────────── */
+    .stMarkdown, p, label, span, .stCaption, .stText { color: var(--text-main); }
+    .stCaption { color: var(--text-muted) !important; font-size: 0.80rem; }
+    [data-testid="stDataFrame"] * { color: var(--text-main) !important; }
+
+    /* ── Expander ───────────────────────────────────────────────────── */
+    div[data-testid="stExpander"] {
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.048), rgba(255,255,255,0.015));
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        backdrop-filter: blur(24px);
+    }
+    div[data-testid="stExpander"]:hover { border-color: rgba(56,189,248,0.18) !important; }
+
+    /* ── Streamlit overrides ────────────────────────────────────────── */
+    [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"]
+      > [data-testid="stVerticalBlockBorderWrapper"] { background: transparent; }
+    div[data-testid="stMarkdownContainer"]:has(h3),
+    div[data-testid="stMarkdownContainer"]:has(h4) { border-radius: var(--radius-card); }
+
+    /* ── Fade-in animation for page load ────────────────────────────── */
+    @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .block-container > div { animation: fadeUp 420ms var(--ease-out) both; }
 </style>
 """, unsafe_allow_html=True)
 
 
 def inject_liquid_spotlight() -> None:
-    """Inject a page-level liquid spotlight that follows the cursor."""
+    """Inject a dual-layer cursor spotlight (outer soft halo + inner accent core)."""
     components.html(
         """
-        <div id="vision-liquid-spotlight"></div>
+        <div id="spot-outer"></div>
+        <div id="spot-inner"></div>
         <style>
-          #vision-liquid-spotlight {
+          #spot-outer, #spot-inner {
             position: fixed;
-            left: 0;
-            top: 0;
-            width: 460px;
-            height: 460px;
+            left: 0; top: 0;
             border-radius: 999px;
             pointer-events: none;
-            z-index: 0;
-            opacity: 0.58;
-            transform: translate3d(-9999px, -9999px, 0);
-            background:
-              radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 22%, rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.02) 52%, transparent 70%);
-            filter: blur(18px);
-            mix-blend-mode: screen;
             will-change: transform;
+          }
+          #spot-outer {
+            width: 600px; height: 600px;
+            z-index: 0;
+            opacity: 0.45;
+            transform: translate3d(-9999px,-9999px,0);
+            background: radial-gradient(circle,
+              rgba(56,189,248,0.14) 0%,
+              rgba(56,189,248,0.07) 25%,
+              rgba(56,189,248,0.02) 50%,
+              transparent 70%);
+            filter: blur(22px);
+            mix-blend-mode: screen;
+          }
+          #spot-inner {
+            width: 220px; height: 220px;
+            z-index: 1;
+            opacity: 0.30;
+            transform: translate3d(-9999px,-9999px,0);
+            background: radial-gradient(circle,
+              rgba(255,255,255,0.22) 0%,
+              rgba(255,255,255,0.08) 40%,
+              transparent 70%);
+            filter: blur(8px);
+            mix-blend-mode: screen;
           }
         </style>
         <script>
-          const light = document.getElementById("vision-liquid-spotlight");
-          let targetX = window.innerWidth / 2;
-          let targetY = window.innerHeight / 3;
-          let currentX = targetX;
-          let currentY = targetY;
-          const render = () => {
-            currentX += (targetX - currentX) * 0.12;
-            currentY += (targetY - currentY) * 0.12;
-            light.style.transform = `translate3d(${currentX - 230}px, ${currentY - 230}px, 0)`;
-            requestAnimationFrame(render);
+          const outer = document.getElementById("spot-outer");
+          const inner = document.getElementById("spot-inner");
+          let tx = window.innerWidth/2, ty = window.innerHeight/3;
+          let ox = tx, oy = ty, ix = tx, iy = ty;
+          const lerp = (a,b,t) => a + (b-a)*t;
+          const tick = () => {
+            ox = lerp(ox, tx, 0.08); oy = lerp(oy, ty, 0.08);
+            ix = lerp(ix, tx, 0.18); iy = lerp(iy, ty, 0.18);
+            outer.style.transform = `translate3d(${ox-300}px,${oy-300}px,0)`;
+            inner.style.transform = `translate3d(${ix-110}px,${iy-110}px,0)`;
+            requestAnimationFrame(tick);
           };
-          window.addEventListener("mousemove", (event) => {
-            targetX = event.clientX;
-            targetY = event.clientY;
-          }, { passive: true });
-          window.addEventListener("scroll", () => {
-            targetY = Math.min(window.innerHeight - 120, targetY);
-          }, { passive: true });
-          requestAnimationFrame(render);
+          window.addEventListener("mousemove", e => { tx=e.clientX; ty=e.clientY; }, {passive:true});
+          requestAnimationFrame(tick);
         </script>
         """,
         height=0,
@@ -745,7 +971,7 @@ def ensure_ui_state() -> None:
     if "ui_theme" not in st.session_state:
         st.session_state["ui_theme"] = "light"
     if "ui_lang" not in st.session_state:
-        st.session_state["ui_lang"] = "tr"
+        st.session_state["ui_lang"] = "en"
     if "data_source" not in st.session_state:
         st.session_state["data_source"] = "sample"
     if "external_csv_path" not in st.session_state:
@@ -796,30 +1022,36 @@ def inject_theme_overrides(theme: str) -> None:
         css = """
         <style>
             :root {
-                --glass-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
-                --glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.82);
-                --glass-lowlight: inset 0 -1px 1px rgba(15, 23, 42, 0.08);
-                --text-main: #101418;
-                --text-muted: rgba(16, 20, 24, 0.58);
-                --line-soft: rgba(16, 20, 24, 0.09);
+                --accent:        #0ea5e9;
+                --accent-soft:   rgba(14,165,233,0.12);
+                --accent-glow:   rgba(14,165,233,0.28);
+                --glass-shadow:  0 20px 60px rgba(15,23,42,0.10);
+                --glass-hi:      inset 0 1px 0 rgba(255,255,255,0.88);
+                --glass-lo:      inset 0 -1px 0 rgba(15,23,42,0.06);
+                --text-main:     #0f172a;
+                --text-muted:    rgba(15,23,42,0.52);
+                --line-soft:     rgba(15,23,42,0.08);
+                --radius-card:   26px;
             }
             html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
                 background:
-                    radial-gradient(circle at 12% 18%, rgba(255,255,255,0.95), transparent 25%),
-                    radial-gradient(circle at 88% 10%, rgba(255,255,255,0.72), transparent 22%),
-                    linear-gradient(180deg, #f8fafc 0%, #edf2f7 48%, #e8edf3 100%) !important;
+                    radial-gradient(ellipse 80% 50% at 10% -5%, rgba(14,165,233,0.07), transparent),
+                    radial-gradient(ellipse 60% 40% at 90%  5%, rgba(129,140,248,0.05), transparent),
+                    linear-gradient(175deg, #f8fafc 0%, #eef2f9 55%, #e9eef6 100%) !important;
+                color: var(--text-main) !important;
             }
             [data-testid="stHeader"] {
-                background: rgba(255,255,255,0.45) !important;
-                border-bottom: 1px solid rgba(15,23,42,0.08) !important;
+                background: rgba(255,255,255,0.58) !important;
+                border-bottom: 1px solid rgba(15,23,42,0.07) !important;
             }
             [data-testid="stSidebar"] {
                 background:
-                    linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.62)),
-                    rgba(255,255,255,0.65) !important;
-                border-right: 1px solid rgba(15,23,42,0.08) !important;
-                box-shadow: inset 0 1px 1px rgba(255,255,255,0.75), 18px 0 46px rgba(15,23,42,0.08) !important;
+                    linear-gradient(160deg, rgba(14,165,233,0.04) 0%, transparent 40%),
+                    linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.72)) !important;
+                border-right: 1px solid rgba(15,23,42,0.07) !important;
+                box-shadow: 20px 0 48px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.90) !important;
             }
+            [data-testid="stSidebar"] * { color: #0f172a !important; }
             [data-testid="stPlotlyChart"],
             [data-testid="stDataFrame"],
             [data-testid="stAlert"],
@@ -832,77 +1064,124 @@ def inject_theme_overrides(theme: str) -> None:
             [data-testid="stFileUploaderDropzone"],
             div[data-testid="stButton"] > button,
             div[data-testid="stDownloadButton"] > button,
-            .hero-shell,
-            .alert-box,
-            .safe-box {
+            .hero-shell, .alert-box, .safe-box {
                 background:
-                    linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.58)),
-                    rgba(255,255,255,0.56) !important;
+                    linear-gradient(180deg, rgba(255,255,255,0.90), rgba(255,255,255,0.65)) !important;
                 border-color: rgba(15,23,42,0.08) !important;
                 box-shadow:
-                    0 16px 42px rgba(15,23,42,0.08),
-                    inset 0 1px 1px rgba(255,255,255,0.92),
-                    inset 0 -1px 1px rgba(15,23,42,0.06) !important;
+                    0 12px 36px rgba(15,23,42,0.08),
+                    inset 0 1px 0 rgba(255,255,255,0.95),
+                    inset 0 -1px 0 rgba(15,23,42,0.04) !important;
             }
+            .hero-shell { border-color: rgba(15,23,42,0.09) !important; }
+            .main-header {
+                background: linear-gradient(135deg, #0f172a 0%, #334155 100%) !important;
+                -webkit-background-clip: text !important;
+                -webkit-text-fill-color: transparent !important;
+                background-clip: text !important;
+                filter: none !important;
+            }
+            .stMarkdown, p, label, span, .stCaption, .stText, h1,h2,h3,h4 { color: #0f172a !important; }
+            div[data-testid="stMetricValue"]  { color: #0f172a !important; }
+            div[data-testid="stMetricLabel"],
+            div[data-testid="stMetricDelta"]  { color: rgba(15,23,42,0.55) !important; }
+            [data-testid="stDataFrame"] * { color: #0f172a !important; }
             div[data-testid="stTextInput"] input,
             [data-baseweb="base-input"] input,
             [data-baseweb="base-input"] {
-                background: rgba(255,255,255,0.94) !important;
+                background: rgba(255,255,255,0.96) !important;
                 color: #0f172a !important;
                 -webkit-text-fill-color: #0f172a !important;
-                border-color: rgba(15,23,42,0.16) !important;
+                border-color: rgba(15,23,42,0.14) !important;
             }
-            div[data-testid="stTextInput"] input::placeholder,
-            [data-baseweb="base-input"] input::placeholder {
-                color: rgba(15,23,42,0.45) !important;
-            }
-            [data-testid="stFileUploaderDropzone"] * {
-                color: #0f172a !important;
+            .stTabs [aria-selected="true"] {
+                background: linear-gradient(180deg, rgba(14,165,233,0.16), rgba(14,165,233,0.06)) !important;
+                border-color: rgba(14,165,233,0.28) !important;
             }
             .stSlider [data-baseweb="slider"] > div > div {
-                background: linear-gradient(90deg, rgba(15,23,42,0.92), rgba(15,23,42,0.40)) !important;
+                background: linear-gradient(90deg, var(--accent), rgba(14,165,233,0.40)) !important;
             }
             .stSlider [role="slider"] {
-                background: #0f172a !important;
-                box-shadow: 0 0 14px rgba(15,23,42,0.24) !important;
+                background: #0ea5e9 !important;
+                box-shadow: 0 0 0 3px rgba(14,165,233,0.30) !important;
             }
-            #vision-liquid-spotlight {
-                opacity: 0.34 !important;
-                background:
-                    radial-gradient(circle, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.52) 24%, rgba(255,255,255,0.18) 42%, transparent 70%) !important;
-                mix-blend-mode: soft-light !important;
+            [data-baseweb="popover"],
+            [data-baseweb="menu"],
+            [role="listbox"] {
+                background: rgba(255,255,255,0.98) !important;
+                color: #0f172a !important;
+                border: 1px solid rgba(15,23,42,0.10) !important;
+                box-shadow: 0 18px 48px rgba(15,23,42,0.14) !important;
+            }
+            [role="option"] {
+                background: transparent !important;
+                color: #0f172a !important;
+            }
+            [role="option"][aria-selected="true"] {
+                background: rgba(14,165,233,0.10) !important;
+            }
+            div[data-testid="stFileUploader"] button,
+            [data-testid="stFileUploaderDropzone"] button {
+                background: linear-gradient(135deg, #f8fbff, #dff2ff) !important;
+                color: #0f172a !important;
+                border: 1px solid rgba(14,165,233,0.28) !important;
+                box-shadow: 0 10px 24px rgba(14,165,233,0.10) !important;
+            }
+            #spot-outer {
+                opacity: 0.28 !important;
+                background: radial-gradient(circle, rgba(14,165,233,0.18) 0%, rgba(14,165,233,0.07) 40%, transparent 70%) !important;
+                mix-blend-mode: multiply !important;
+            }
+            #spot-inner {
+                opacity: 0.18 !important;
+                mix-blend-mode: multiply !important;
             }
         </style>
         """
     else:
-        css = """
-        <style>
-            #vision-liquid-spotlight {
-                opacity: 0.58;
-                background:
-                    radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 22%, rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.02) 52%, transparent 70%);
-                mix-blend-mode: screen;
-            }
-        </style>
-        """
-    st.markdown(css, unsafe_allow_html=True)
+        css = ""  # dark mode uses the base CSS as-is
+    if css:
+        st.markdown(css, unsafe_allow_html=True)
 
 
 def apply_plotly_theme(fig: go.Figure, theme: str) -> go.Figure:
     if theme == "light":
-        fig.update_layout(
-            paper_bgcolor="rgba(255,255,255,0.72)",
-            plot_bgcolor="rgba(255,255,255,0.18)",
-            font=dict(color="#101418"),
-            legend=dict(bgcolor="rgba(255,255,255,0.0)", font=dict(color="#101418")),
+        tc = "#0f172a"
+        axis_common = dict(
+            color=tc,
+            tickfont=dict(color=tc),
+            title=dict(font=dict(color=tc)),
+            gridcolor="rgba(15,23,42,0.08)",
+            zerolinecolor="rgba(15,23,42,0.15)",
+            linecolor="rgba(15,23,42,0.12)",
         )
+        fig.update_layout(
+            paper_bgcolor="rgba(255,255,255,0.80)",
+            plot_bgcolor="rgba(255,255,255,0.35)",
+            font=dict(color=tc, family="Inter, system-ui, sans-serif"),
+            legend=dict(bgcolor="rgba(255,255,255,0.70)", font=dict(color=tc),
+                        bordercolor="rgba(15,23,42,0.10)", borderwidth=1),
+        )
+        fig.update_xaxes(**axis_common)
+        fig.update_yaxes(**axis_common)
     else:
-        fig.update_layout(
-            paper_bgcolor="rgba(10,13,17,0.55)",
-            plot_bgcolor="rgba(255,255,255,0.015)",
-            font=dict(color="#f5f7fb"),
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#f5f7fb")),
+        tc = "#f0f4ff"
+        axis_common = dict(
+            color=tc,
+            tickfont=dict(color=tc),
+            title=dict(font=dict(color=tc)),
+            gridcolor="rgba(255,255,255,0.06)",
+            zerolinecolor="rgba(255,255,255,0.10)",
+            linecolor="rgba(255,255,255,0.07)",
         )
+        fig.update_layout(
+            paper_bgcolor="rgba(8,12,18,0.55)",
+            plot_bgcolor="rgba(255,255,255,0.012)",
+            font=dict(color=tc, family="Inter, system-ui, sans-serif"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=tc)),
+        )
+        fig.update_xaxes(**axis_common)
+        fig.update_yaxes(**axis_common)
     return fig
 
 
@@ -940,6 +1219,26 @@ def _load_sample_data():
         "raw_customers": int(raw["customer_id"].nunique()) if "customer_id" in raw.columns else 0,
     }
     return features, raw, meta
+
+
+def resolve_external_csv_path(path_value: str) -> str:
+    raw_path = str(path_value or "").strip().strip('"').strip("'")
+    if not raw_path:
+        return ""
+
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_file():
+        return str(candidate.resolve())
+
+    if candidate.is_dir():
+        for name in ["data.csv", "dataset.csv", "features.csv"]:
+            possible = candidate / name
+            if possible.exists():
+                return str(possible.resolve())
+        csv_files = sorted(candidate.glob("*.csv"))
+        if csv_files:
+            return str(csv_files[0].resolve())
+    return str(candidate)
 
 
 def _build_external_dataset(csv_path: str):
@@ -999,7 +1298,6 @@ def _build_external_dataset(csv_path: str):
     with np.errstate(invalid="ignore"):
         zero_measurement_pct = np.nanmean((arr <= 1e-4).astype(np.float32), axis=1)
     zero_measurement_pct = np.nan_to_num(zero_measurement_pct, nan=0.0)
-    zero_day_pct = zero_measurement_pct.copy()
 
     filled = np.where(np.isnan(arr), np.nanmedian(arr, axis=1, keepdims=True), arr)
     filled = np.nan_to_num(filled, nan=0.0)
@@ -1032,6 +1330,63 @@ def _build_external_dataset(csv_path: str):
     mean_daily_total = mean_consumption.copy()
     std_daily_total = std_consumption.copy()
     cv_daily = np.nan_to_num(std_daily_total / (mean_daily_total + 1e-6), nan=0.0, posinf=0.0, neginf=0.0)
+
+    # ── Gelişmiş ayırt edici özellikler (SGCC/gerçek veri için) ────────────────
+
+    # 1. En uzun ardışık sıfır serisi — hırsızlıkta uzun kesintiler olur
+    def _max_zero_run(row: np.ndarray) -> int:
+        best = cur = 0
+        for v in row:
+            if np.isnan(v) or v <= 1e-4:
+                cur += 1
+                best = max(best, cur)
+            else:
+                cur = 0
+        return best
+
+    max_zero_run = np.array([_max_zero_run(filled[i]) for i in range(len(filled))], dtype=np.float32)
+
+    # 2. Tüketim trendi: son %33 ortalama / ilk %33 ortalama
+    #    Hırsızlıkta zaman içinde tüketim düşer → oran < 1
+    n3 = max(1, filled.shape[1] // 3)
+    early_mean = np.nanmean(filled[:, :n3], axis=1)
+    late_mean  = np.nanmean(filled[:, -n3:], axis=1)
+    relative_trend = np.nan_to_num(late_mean / (early_mean + 1e-6), nan=1.0, posinf=1.0, neginf=0.0)
+    relative_trend = np.clip(relative_trend, 0.0, 5.0).astype(np.float32)
+
+    # 3. Aylık toplam tüketimlerin değişkenlik katsayısı
+    #    Ani düşüş/çıkış olan aylarda CV yüksek olur
+    date_dt = pd.DatetimeIndex([parsed_dates[c] for c in date_cols])
+    months = date_dt.to_period("M")
+    unique_months = sorted(set(months))
+    if len(unique_months) >= 2:
+        monthly_totals = np.zeros((len(filled), len(unique_months)), dtype=np.float32)
+        for mi, m in enumerate(unique_months):
+            mask = np.array([mo == m for mo in months])
+            monthly_totals[:, mi] = np.nanmean(filled[:, mask], axis=1)
+        monthly_cv = np.nan_to_num(
+            np.nanstd(monthly_totals, axis=1) / (np.nanmean(monthly_totals, axis=1) + 1e-6),
+            nan=0.0, posinf=0.0
+        ).astype(np.float32)
+    else:
+        monthly_cv = np.zeros(len(filled), dtype=np.float32)
+
+    # 4. En yüksek %5'lik tüketim ortalaması — pik kırpma tespiti
+    #    Normal müşterilerde pik/ortalama oranı yüksek, kırpmalıda düşük
+    p95 = np.nanpercentile(filled, 95, axis=1)
+    peak_to_mean = np.nan_to_num(p95 / (mean_consumption + 1e-6), nan=1.0, posinf=1.0).astype(np.float32)
+
+    # 5. Değişim noktası skoru — ardışık günler arası büyük sıçrama sayısı
+    #    Sayaç manipülasyonunda ani seviye değişimleri olur
+    if filled.shape[1] > 1:
+        day_diffs = np.diff(filled, axis=1)
+        threshold_per_row = np.nanstd(filled, axis=1, keepdims=True) * 2.0
+        changepoints = np.nan_to_num(
+            (np.abs(day_diffs) > threshold_per_row).sum(axis=1) / filled.shape[1],
+            nan=0.0
+        ).astype(np.float32)
+    else:
+        changepoints = np.zeros(len(filled), dtype=np.float32)
 
     if label_col:
         labels = pd.to_numeric(work[label_col], errors="coerce").fillna(0).astype(int).to_numpy()
@@ -1074,12 +1429,17 @@ def _build_external_dataset(csv_path: str):
             "weekend_weekday_ratio": weekend_weekday_ratio,
             "peak_hour": peak_hour,
             "zero_measurement_pct": zero_measurement_pct,
-            "zero_day_pct": zero_day_pct,
             "sudden_change_ratio": sudden_change_ratio,
             "trend_slope": trend_slope,
             "q25": q25,
             "q75": q75,
             "iqr": iqr,
+            # Gelişmiş özellikler
+            "max_zero_run": max_zero_run,
+            "relative_trend": relative_trend,
+            "monthly_cv": monthly_cv,
+            "peak_to_mean": peak_to_mean,
+            "changepoint_rate": changepoints,
         }
     )
 
@@ -1116,7 +1476,7 @@ def _build_external_dataset(csv_path: str):
 @st.cache_data
 def load_data(source: str = "sample", external_csv_path: str = ""):
     if source == "external":
-        path = (external_csv_path or "").strip()
+        path = resolve_external_csv_path(external_csv_path)
         if not path:
             raise ValueError("External CSV path is empty.")
         if not os.path.exists(path):
@@ -1129,7 +1489,6 @@ def load_data(source: str = "sample", external_csv_path: str = ""):
 @st.cache_data
 def run_models(features_df):
     from sklearn.ensemble import IsolationForest, RandomForestClassifier
-    from sklearn.preprocessing import StandardScaler
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import roc_curve, precision_recall_curve, confusion_matrix, roc_auc_score, f1_score
 
@@ -1148,6 +1507,8 @@ def run_models(features_df):
             return 0.5
         return roc_auc_score(y_true, y_score)
 
+    from sklearn.preprocessing import RobustScaler
+
     features_df = features_df.copy()
     meta_cols = ["customer_id", "profile", "label", "theft_type", "source_customer_ref"]
     feature_cols = [c for c in features_df.columns if c not in meta_cols]
@@ -1162,39 +1523,50 @@ def run_models(features_df):
     y = pd.to_numeric(features_df["label"], errors="coerce").fillna(0).astype(int).to_numpy()
     y = (y > 0).astype(int)
 
-    scaler = StandardScaler()
+    # RobustScaler: outlier'lara (800k gibi) karşı StandardScaler'dan çok daha dayanıklı
+    scaler = RobustScaler()
     X_scaled = scaler.fit_transform(X)
+    X_scaled = np.clip(X_scaled, -10, 10)  # aşırı uçları sınırla
 
     class_counts = pd.Series(y).value_counts()
+    pos_rate = float(np.mean(y)) if len(y) else 0.05
     stratify_y = y if (len(class_counts) > 1 and class_counts.min() >= 2) else None
     X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
         X_scaled, y, np.arange(len(y)), test_size=0.25, random_state=42, stratify=stratify_y
     )
 
-    iso_contamination = min(0.12, max(0.01, float(np.mean(y)) if len(y) else 0.01))
-    iso = IsolationForest(n_estimators=200, contamination=iso_contamination, random_state=42)
-    iso.fit(X_scaled)
+    # Isolation Forest: gerçek pozitif orana göre contamination ayarla
+    iso_contamination = float(np.clip(pos_rate, 0.01, 0.20))
+    iso = IsolationForest(n_estimators=300, contamination=iso_contamination,
+                          max_features=0.8, random_state=42)
+    iso.fit(X_train)  # sadece train seti üzerinde fit et (veri sızıntısını önle)
     iso_scores = -iso.score_samples(X_scaled)
-    iso_preds_all = (iso.predict(X_scaled) == -1).astype(int)
     iso_scores_test = -iso.score_samples(X_test)
     iso_preds_test = (iso.predict(X_test) == -1).astype(int)
 
     can_train_supervised = len(np.unique(y_train)) > 1
     if can_train_supervised:
-        rf = RandomForestClassifier(n_estimators=200, max_depth=8, class_weight="balanced", random_state=42)
+        neg_count = (y_train == 0).sum()
+        pos_count = (y_train == 1).sum()
+        # Sınıf dengesizliği için ağırlık: azınlık sınıfını daha güçlü ağırlıkla
+        cw = {0: 1.0, 1: max(2.0, neg_count / max(pos_count, 1) * 0.7)}
+        rf = RandomForestClassifier(
+            n_estimators=300, max_depth=10, min_samples_leaf=5,
+            class_weight=cw, max_features="sqrt", random_state=42, n_jobs=-1,
+        )
         rf.fit(X_train, y_train)
         rf_probs_all = rf.predict_proba(X_scaled)[:, 1]
         rf_probs_test = rf.predict_proba(X_test)[:, 1]
-        rf_preds_all = rf.predict(X_scaled)
-        rf_preds_test = rf.predict(X_test)
+        # Eşiği class oranına göre otomatik ayarla (0.5 yerine)
+        optimal_thresh = np.clip(pos_rate * 1.5, 0.20, 0.60)
+        rf_preds_test = (rf_probs_test >= optimal_thresh).astype(int)
         importance = dict(zip(feature_cols, rf.feature_importances_))
     else:
         iso_min = float(np.min(iso_scores))
         iso_span = float(np.max(iso_scores) - iso_min) + 1e-8
         rf_probs_all = (iso_scores - iso_min) / iso_span
         rf_probs_test = rf_probs_all[idx_test]
-        rf_preds_all = (rf_probs_all >= 0.5).astype(int)
-        rf_preds_test = rf_preds_all[idx_test]
+        rf_preds_test = (rf_probs_test >= 0.5).astype(int)
         importance = {name: 0.0 for name in feature_cols}
 
     rf_fpr, rf_tpr, _ = safe_roc_curve(y_test, rf_probs_test)
@@ -1222,28 +1594,32 @@ def run_models(features_df):
         try:
             from xgboost import XGBClassifier
 
-            neg, pos = (y_train == 0).sum(), (y_train == 1).sum()
+            neg_c, pos_c = (y_train == 0).sum(), (y_train == 1).sum()
             xgb = XGBClassifier(
-                n_estimators=180,
-                max_depth=5,
-                learning_rate=0.05,
-                scale_pos_weight=neg / max(pos, 1),
-                eval_metric="logloss",
+                n_estimators=400,
+                max_depth=6,
+                learning_rate=0.03,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                scale_pos_weight=neg_c / max(pos_c, 1),
+                min_child_weight=5,
+                eval_metric="aucpr",  # imbalanced için PR-AUC daha anlamlı
                 random_state=42,
                 verbosity=0,
+                n_jobs=-1,
             )
             xgb.fit(X_train, y_train)
             xgb_probs_all = xgb.predict_proba(X_scaled)[:, 1]
             xgb_probs_test = xgb.predict_proba(X_test)[:, 1]
-            xgb_preds_test = xgb.predict(X_test)
+            xgb_preds_test = (xgb_probs_test >= optimal_thresh).astype(int)
             xgb_auc = safe_auc(y_test, xgb_probs_test)
             xgb_f1 = f1_score(y_test, xgb_preds_test, zero_division=0)
             xgb_fpr, xgb_tpr, _ = safe_roc_curve(y_test, xgb_probs_test)
             if xgb_auc > rf_auc:
                 primary_probs = xgb_probs_all
                 best_model_name = f"XGBoost (AUC {xgb_auc:.3f})"
-        except Exception:
-            pass
+        except Exception as _xgb_exc:
+            _logger.warning("run_models: XGBoost training skipped: %s", _xgb_exc)
 
     features_df["anomaly_score"] = iso_scores
     features_df["theft_probability"] = primary_probs
@@ -1302,6 +1678,273 @@ def run_models(features_df):
     return features_df, metrics
 
 
+@st.cache_data
+def run_models_v2(features_df):
+    from sklearn.ensemble import GradientBoostingClassifier, IsolationForest, RandomForestClassifier, StackingClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import (
+        average_precision_score,
+        confusion_matrix,
+        f1_score,
+        precision_recall_curve,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+        roc_curve,
+    )
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import RobustScaler
+
+    def safe_roc_curve(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return np.array([0.0, 1.0]), np.array([0.0, 1.0]), np.array([1.0, 0.0])
+        return roc_curve(y_true, y_score)
+
+    def safe_pr_curve(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return np.array([1.0, 0.0]), np.array([0.0, 1.0]), np.array([0.5])
+        return precision_recall_curve(y_true, y_score)
+
+    def safe_auc(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return 0.5
+        return roc_auc_score(y_true, y_score)
+
+    def safe_ap(y_true, y_score):
+        if len(np.unique(y_true)) < 2:
+            return 0.0
+        return average_precision_score(y_true, y_score)
+
+    features_df = features_df.copy()
+    meta_cols = ["customer_id", "profile", "label", "theft_type", "source_customer_ref"]
+    feature_cols = [c for c in features_df.columns if c not in meta_cols]
+    features_df[feature_cols] = (
+        features_df[feature_cols]
+        .apply(pd.to_numeric, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+    )
+
+    X = features_df[feature_cols].to_numpy(dtype=np.float32)
+    y = pd.to_numeric(features_df["label"], errors="coerce").fillna(0).astype(int).to_numpy()
+    y = (y > 0).astype(int)
+
+    scaler = RobustScaler()
+    X_scaled = np.clip(scaler.fit_transform(X), -10, 10)
+
+    class_counts = pd.Series(y).value_counts()
+    pos_rate = float(np.mean(y)) if len(y) else 0.05
+    stratify_y = y if (len(class_counts) > 1 and class_counts.min() >= 2) else None
+    X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
+        X_scaled, y, np.arange(len(y)), test_size=0.25, random_state=42, stratify=stratify_y
+    )
+
+    iso_contamination = float(np.clip(pos_rate, 0.01, 0.20))
+    iso = IsolationForest(n_estimators=300, contamination=iso_contamination, max_features=0.8, random_state=42)
+    iso.fit(X_train)
+    iso_scores = -iso.score_samples(X_scaled)
+    iso_scores_test = -iso.score_samples(X_test)
+    iso_preds_test = (iso.predict(X_test) == -1).astype(int)
+
+    train_class_counts = pd.Series(y_train).value_counts()
+    can_train_supervised = len(np.unique(y_train)) > 1 and train_class_counts.min() >= 2
+    optimal_thresh = 0.5
+    if can_train_supervised:
+        neg_count = (y_train == 0).sum()
+        pos_count = (y_train == 1).sum()
+        cw = {0: 1.0, 1: max(2.0, neg_count / max(pos_count, 1) * 0.7)}
+        rf = RandomForestClassifier(
+            n_estimators=300,
+            max_depth=10,
+            min_samples_leaf=5,
+            class_weight=cw,
+            max_features="sqrt",
+            random_state=42,
+            n_jobs=-1,
+        )
+        rf.fit(X_train, y_train)
+        rf_probs_all = rf.predict_proba(X_scaled)[:, 1]
+        rf_probs_test = rf.predict_proba(X_test)[:, 1]
+        optimal_thresh = float(np.clip(pos_rate * 1.5, 0.20, 0.60))
+        rf_preds_test = (rf_probs_test >= optimal_thresh).astype(int)
+        importance = dict(zip(feature_cols, rf.feature_importances_))
+    else:
+        iso_min = float(np.min(iso_scores))
+        iso_span = float(np.max(iso_scores) - iso_min) + 1e-8
+        rf_probs_all = (iso_scores - iso_min) / iso_span
+        rf_probs_test = rf_probs_all[idx_test]
+        rf_preds_test = (rf_probs_test >= 0.5).astype(int)
+        importance = {name: 0.0 for name in feature_cols}
+
+    rf_fpr, rf_tpr, _ = safe_roc_curve(y_test, rf_probs_test)
+    iso_fpr, iso_tpr, _ = safe_roc_curve(y_test, iso_scores_test)
+    rf_prec, rf_rec, _ = safe_pr_curve(y_test, rf_probs_test)
+    iso_prec, iso_rec, _ = safe_pr_curve(y_test, iso_scores_test)
+    rf_cm = confusion_matrix(y_test, rf_preds_test, labels=[0, 1])
+    iso_cm = confusion_matrix(y_test, iso_preds_test, labels=[0, 1])
+    rf_auc = safe_auc(y_test, rf_probs_test)
+    iso_auc = safe_auc(y_test, iso_scores_test)
+    rf_f1 = f1_score(y_test, rf_preds_test, zero_division=0)
+    iso_f1 = f1_score(y_test, iso_preds_test, zero_division=0)
+
+    primary_probs = rf_probs_all
+    best_model_name = f"Random Forest (AUC {rf_auc:.3f})"
+    best_model_key = "Random Forest"
+    best_preds_test = rf_preds_test
+    model_curves = {}
+    model_rows = []
+    xgb_probs_test = np.array([])
+
+    def register_model(name, model_type, y_score, y_pred, importances=None):
+        fpr, tpr, _ = safe_roc_curve(y_test, y_score)
+        precision, recall, _ = safe_pr_curve(y_test, y_score)
+        row = {
+            "Model": name,
+            "Type": model_type,
+            "ROC-AUC": safe_auc(y_test, y_score),
+            "PR-AUC": safe_ap(y_test, y_score),
+            "Precision": precision_score(y_test, y_pred, zero_division=0),
+            "Recall": recall_score(y_test, y_pred, zero_division=0),
+            "F1": f1_score(y_test, y_pred, zero_division=0),
+        }
+        model_rows.append(row)
+        model_curves[name] = {
+            "fpr": fpr,
+            "tpr": tpr,
+            "precision": precision,
+            "recall": recall,
+            "auc": row["ROC-AUC"],
+            "ap": row["PR-AUC"],
+            "pred": y_pred,
+        }
+        if importances is not None:
+            model_curves[name]["importance"] = importances
+
+    if can_train_supervised:
+        try:
+            from xgboost import XGBClassifier
+
+            neg_c, pos_c = (y_train == 0).sum(), (y_train == 1).sum()
+            xgb = XGBClassifier(
+                n_estimators=400,
+                max_depth=6,
+                learning_rate=0.03,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                scale_pos_weight=neg_c / max(pos_c, 1),
+                min_child_weight=5,
+                eval_metric="aucpr",
+                random_state=42,
+                verbosity=0,
+                n_jobs=-1,
+            )
+            xgb.fit(X_train, y_train)
+            xgb_probs_all = xgb.predict_proba(X_scaled)[:, 1]
+            xgb_probs_test = xgb.predict_proba(X_test)[:, 1]
+            xgb_preds_test = (xgb_probs_test >= optimal_thresh).astype(int)
+            xgb_auc = safe_auc(y_test, xgb_probs_test)
+            if xgb_auc > rf_auc:
+                primary_probs = xgb_probs_all
+                best_model_name = f"XGBoost (AUC {xgb_auc:.3f})"
+                best_model_key = "XGBoost"
+                best_preds_test = xgb_preds_test
+        except Exception as _xgb_exc:
+            _logger.warning("run_models_v2: XGBoost training skipped: %s", _xgb_exc)
+
+        log_reg = LogisticRegression(class_weight="balanced", max_iter=2000, random_state=42)
+        log_reg.fit(X_train, y_train)
+        lr_probs_test = log_reg.predict_proba(X_test)[:, 1]
+        lr_preds_test = (lr_probs_test >= optimal_thresh).astype(int)
+
+        gb = GradientBoostingClassifier(n_estimators=220, learning_rate=0.05, subsample=0.82, random_state=42)
+        gb.fit(X_train, y_train)
+        gb_probs_test = gb.predict_proba(X_test)[:, 1]
+        gb_preds_test = (gb_probs_test >= optimal_thresh).astype(int)
+
+        stack_cv = int(max(2, min(5, train_class_counts.min())))
+        stack = StackingClassifier(
+            estimators=[
+                ("lr", LogisticRegression(class_weight="balanced", max_iter=1200, random_state=42)),
+                ("rf", RandomForestClassifier(n_estimators=150, max_depth=8, class_weight="balanced", random_state=42)),
+                ("gb", GradientBoostingClassifier(n_estimators=150, learning_rate=0.05, random_state=42)),
+            ],
+            final_estimator=LogisticRegression(max_iter=1000),
+            cv=stack_cv,
+            stack_method="predict_proba",
+            n_jobs=-1,
+        )
+        stack.fit(X_train, y_train)
+        stack_probs_all = stack.predict_proba(X_scaled)[:, 1]
+        stack_probs_test = stack.predict_proba(X_test)[:, 1]
+        stack_preds_test = (stack_probs_test >= optimal_thresh).astype(int)
+        stack_auc = safe_auc(y_test, stack_probs_test)
+        if stack_auc > safe_auc(y_test, primary_probs[idx_test]):
+            primary_probs = stack_probs_all
+            best_model_name = f"Stacking Ensemble (AUC {stack_auc:.3f})"
+            best_model_key = "Stacking Ensemble"
+            best_preds_test = stack_preds_test
+
+        register_model("Random Forest", "Supervised", rf_probs_test, rf_preds_test, importance)
+        if len(xgb_probs_test):
+            register_model("XGBoost", "Supervised", xgb_probs_test, xgb_preds_test)
+        register_model("Logistic Regression", "Supervised", lr_probs_test, lr_preds_test)
+        register_model("Gradient Boosting", "Supervised", gb_probs_test, gb_preds_test)
+        register_model("Stacking Ensemble", "Meta Learning", stack_probs_test, stack_preds_test)
+    else:
+        register_model("Random Forest", "Fallback", rf_probs_test, rf_preds_test, importance)
+
+    register_model("Isolation Forest", "Unsupervised", iso_scores_test, iso_preds_test)
+
+    features_df["anomaly_score"] = iso_scores
+    features_df["theft_probability"] = primary_probs
+    features_df["predicted_theft"] = (primary_probs >= optimal_thresh).astype(int)
+    features_df["risk_band"] = pd.cut(
+        features_df["theft_probability"],
+        bins=[-0.001, 0.30, 0.45, 0.70, 0.85, 1.001],
+        labels=["DÃ¼ÅŸÃ¼k", "Orta", "YÃ¼ksek", "Kritik", "Acil"],
+    )
+    features_df["risk_score"] = (features_df["theft_probability"] * 100).round(1)
+
+    tariff = features_df["profile"].map({"residential": 2.28, "commercial": 2.85, "industrial": 1.92}).fillna(2.15)
+    base_loss = features_df.get("mean_consumption", pd.Series(np.ones(len(features_df)) * 10.0))
+    features_df["est_monthly_loss"] = np.where(
+        features_df["theft_probability"] >= optimal_thresh,
+        (base_loss * 30 * tariff * features_df["theft_probability"]).round(0),
+        0.0,
+    )
+    features_df["risk_level"] = features_df["risk_band"]
+
+    metrics = {
+        "rf_fpr": rf_fpr,
+        "rf_tpr": rf_tpr,
+        "rf_auc": rf_auc,
+        "rf_f1": rf_f1,
+        "rf_cm": rf_cm,
+        "iso_fpr": iso_fpr,
+        "iso_tpr": iso_tpr,
+        "iso_auc": iso_auc,
+        "iso_f1": iso_f1,
+        "iso_cm": iso_cm,
+        "rf_prec": rf_prec,
+        "rf_rec": rf_rec,
+        "iso_prec": iso_prec,
+        "iso_rec": iso_rec,
+        "importance": importance,
+        "feature_cols": feature_cols,
+        "y_test": y_test,
+        "rf_probs_test": rf_probs_test,
+        "iso_scores_test": iso_scores_test,
+        "best_model": best_model_name,
+        "best_model_key": best_model_key,
+        "best_threshold": float(optimal_thresh),
+        "best_preds_test": best_preds_test,
+        "model_curves": model_curves,
+        "model_table": pd.DataFrame(model_rows).sort_values(["ROC-AUC", "PR-AUC"], ascending=False).reset_index(drop=True),
+    }
+
+    return features_df, metrics
+
+
 # ========== SIDEBAR ==========
 def render_sidebar(features_df, data_meta):
     ensure_ui_state()
@@ -1337,8 +1980,11 @@ def render_sidebar(features_df, data_meta):
             tr("external_csv_path"),
             value=st.session_state.get("external_csv_path", ""),
         )
-        if st.session_state.get("external_csv_path") != external_path_input:
-            st.session_state["external_csv_path"] = external_path_input
+        resolved_input = resolve_external_csv_path(external_path_input)
+        if st.session_state.get("external_csv_path") != resolved_input:
+            st.session_state["external_csv_path"] = resolved_input
+            load_data.clear()
+            st.session_state["_need_rerun"] = True
         st.sidebar.caption(tr("external_csv_hint"))
         uploaded_csv = st.sidebar.file_uploader(
             tr("external_csv_upload"),
@@ -1362,12 +2008,20 @@ def render_sidebar(features_df, data_meta):
             st.sidebar.caption(f"{tr('external_saved_path')}: {target_path}")
             if st.session_state.get("external_csv_path") != target_path:
                 st.session_state["external_csv_path"] = target_path
-                st.rerun()
-    if data_meta.get("source") == "external":
-        st.sidebar.caption(
-            f"{tr('external_loaded')}: {data_meta.get('rows', 0):,} | "
-            f"{tr('external_preview')}: {data_meta.get('raw_customers', 0)}"
-        )
+                load_data.clear()
+                st.session_state["_need_rerun"] = True
+    if st.session_state.get("data_source") == "external":
+        path_now = resolve_external_csv_path(st.session_state.get("external_csv_path", ""))
+        if not path_now:
+            st.sidebar.warning("CSV yolu girilmedi — örnek veri gösteriliyor." if st.session_state.get("ui_lang","tr") == "tr" else "No CSV path set — showing sample data.")
+        elif not os.path.exists(path_now):
+            st.sidebar.error("Dosya bulunamadı." if st.session_state.get("ui_lang","tr") == "tr" else "File not found.")
+        elif data_meta.get("source") == "external":
+            st.sidebar.success(
+                f"{tr('external_loaded')}: {data_meta.get('rows', 0):,} | "
+                f"{tr('external_preview')}: {data_meta.get('raw_customers', 0)}"
+            )
+            st.sidebar.caption(f"{tr('external_saved_path')}: {path_now}")
     st.sidebar.markdown("---")
 
     st.sidebar.markdown(f"### {tr('filters')}")
@@ -1406,6 +2060,24 @@ def render_sidebar(features_df, data_meta):
     return filtered, prob_threshold
 
 
+@st.cache_data
+def _make_city_coords(n: int) -> tuple:
+    """Return (lats, lons, city_names) lists of length *n* with a fixed random seed."""
+    rng = np.random.default_rng(42)
+    cities = {
+        "Istanbul": (41.01, 28.97, 0.35), "Ankara": (39.93, 32.86, 0.15),
+        "Izmir": (38.42, 27.14, 0.10), "Diyarbakir": (37.91, 40.22, 0.10),
+        "Antalya": (36.90, 30.69, 0.08), "Adana": (37.00, 35.32, 0.07),
+        "Bursa": (40.19, 29.06, 0.08), "Gaziantep": (37.06, 37.38, 0.07),
+    }
+    names = list(cities.keys())
+    probs = [v[2] for v in cities.values()]
+    chosen = rng.choice(names, size=n, p=probs)
+    lats = [cities[c][0] + rng.normal(0, 0.3) for c in chosen]
+    lons = [cities[c][1] + rng.normal(0, 0.3) for c in chosen]
+    return lats, lons, list(chosen)
+
+
 # ========== TAB 1: GENEL BAKIS ==========
 def render_overview(df, threshold, raw_df):
     theme = st.session_state.get("ui_theme", "dark")
@@ -1413,8 +2085,9 @@ def render_overview(df, threshold, raw_df):
     total = len(df)
     detected = (df["theft_probability"] >= threshold).sum()
     detection_rate = detected / total * 100 if total else 0
-    urgent_count = (df["risk_band"].astype(str).apply(canonical_risk) == "urgent").sum()
-    critical_count = (df["risk_band"].astype(str).apply(canonical_risk) == "critical").sum()
+    _risk_keys = df["risk_band"].astype(str).apply(canonical_risk)
+    urgent_count = (_risk_keys == "urgent").sum()
+    critical_count = (_risk_keys == "critical").sum()
     monthly_loss = df["est_monthly_loss"].sum() if "est_monthly_loss" in df.columns else 0
 
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -1427,21 +2100,7 @@ def render_overview(df, threshold, raw_df):
     st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     st.markdown(f"### {tr('regional_map')}")
 
-    np.random.seed(42)
-    cities = {
-        "Istanbul": (41.01, 28.97, 0.35), "Ankara": (39.93, 32.86, 0.15),
-        "Izmir": (38.42, 27.14, 0.10), "Diyarbakir": (37.91, 40.22, 0.10),
-        "Antalya": (36.90, 30.69, 0.08), "Adana": (37.00, 35.32, 0.07),
-        "Bursa": (40.19, 29.06, 0.08), "Gaziantep": (37.06, 37.38, 0.07),
-    }
-    lats, lons, city_names = [], [], []
-    for _ in range(len(df)):
-        city = np.random.choice(list(cities.keys()), p=[v[2] for v in cities.values()])
-        lat_base, lon_base, _ = cities[city]
-        lats.append(lat_base + np.random.normal(0, 0.3))
-        lons.append(lon_base + np.random.normal(0, 0.3))
-        city_names.append(city)
-
+    lats, lons, city_names = _make_city_coords(len(df))
     map_df = df.copy()
     map_df["lat"] = lats
     map_df["lon"] = lons
@@ -1456,12 +2115,13 @@ def render_overview(df, threshold, raw_df):
         [0.75, "#e67e22"],
         [1.0, "#e74c3c"],
     ]
+    # TODO: limit hover_data to essential columns — reduces Plotly JSON payload
     map_fig = px.scatter_mapbox(
         map_df,
         lat="lat",
         lon="lon",
         color="theft_probability",
-        size="anomaly_score",
+        size="risk_score",
         color_continuous_scale=map_scale,
         range_color=[0, 1],
         size_max=12,
@@ -1470,21 +2130,21 @@ def render_overview(df, threshold, raw_df):
         mapbox_style="carto-positron" if theme == "light" else "carto-darkmatter",
         hover_data={
             "customer_id": True,
-            "anomaly_score": ":.3f",
-            "profile_label": True,
             "theft_probability": ":.2f",
             "risk_label": True,
+            "city": True,
             "lat": False,
             "lon": False,
+            "risk_score": False,
             "profile": False,
             "risk_level": False,
+            "profile_label": False,
         },
         labels={
             "customer_id": tr("customer_id"),
-            "anomaly_score": tr("anomaly_score"),
-            "profile_label": tr("profile"),
             "theft_probability": tr("probability"),
             "risk_label": tr("risk"),
+            "city": "Sehir" if st.session_state.get("ui_lang", "tr") == "tr" else "City",
         },
         height=450,
     )
@@ -1674,15 +2334,46 @@ def render_timeseries_comparison(df, raw_df):
             format_func=(lambda x: f"{x} days" if is_en else f"{x} Gun"),
         )
 
-    normal_pool = df[(df["label"] == 0) & (df["profile"] == profile_sel) & (df["customer_id"] < 200)]
-    theft_pool = df[(df["label"] == 1) & (df["profile"] == profile_sel) & (df["customer_id"] < 200)]
+    # Ham verisi olan müşterilerle sınırla (ilk 260 müşteri)
+    available_ids = set(raw_df["customer_id"].unique())
+    normal_pool = df[
+        (df["label"] == 0) &
+        (df["profile"] == profile_sel) &
+        (df["customer_id"].isin(available_ids))
+    ].sort_values("customer_id")
+    theft_pool = df[
+        (df["label"] == 1) &
+        (df["profile"] == profile_sel) &
+        (df["customer_id"].isin(available_ids))
+    ].sort_values("customer_id")
 
     if len(normal_pool) == 0 or len(theft_pool) == 0:
         st.info(no_data_txt)
         return
 
-    normal_cust = normal_pool.iloc[0]
-    theft_cust = theft_pool.iloc[0]
+    # Müşteri seçici
+    sel_col1, sel_col2 = st.columns(2)
+    _prob_map = df.set_index("customer_id")["theft_probability"].to_dict()
+    normal_label = "Normal Customer" if is_en else "Normal Musteri"
+    theft_label  = "Theft Customer"  if is_en else "Kacak Musteri"
+
+    with sel_col1:
+        normal_id = st.selectbox(
+            normal_label,
+            options=normal_pool["customer_id"].tolist(),
+            format_func=lambda x: f"#{x}  —  Risk: {_prob_map.get(x, 0):.0%}",
+            key="ts_normal_sel",
+        )
+    with sel_col2:
+        theft_id = st.selectbox(
+            theft_label,
+            options=theft_pool["customer_id"].tolist(),
+            format_func=lambda x: f"#{x}  —  Risk: {_prob_map.get(x, 0):.0%}",
+            key="ts_theft_sel",
+        )
+
+    normal_cust = df[df["customer_id"] == normal_id].iloc[0]
+    theft_cust  = df[df["customer_id"] == theft_id].iloc[0]
     n_points = days_sel * 96
 
     normal_raw = raw_df[raw_df["customer_id"] == normal_cust["customer_id"]].head(n_points)
@@ -1873,12 +2564,19 @@ def render_model_performance(df, metrics):
 
     st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
+    curve_palette = ["#2563eb", "#ea580c", "#16a34a", "#7c3aed", "#dc2626", "#0891b2"]
 
     with col1:
         st.markdown(f"#### {roc_title}")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=metrics["rf_fpr"], y=metrics["rf_tpr"], mode="lines", name=f"Random Forest (AUC={metrics['rf_auc']:.3f})", line=dict(color="#2E86C1", width=2.5)))
-        fig.add_trace(go.Scatter(x=metrics["iso_fpr"], y=metrics["iso_tpr"], mode="lines", name=f"Isolation Forest (AUC={metrics['iso_auc']:.3f})", line=dict(color="#E67E22", width=2.5)))
+        for idx, (model_name, curve) in enumerate(metrics.get("model_curves", {}).items()):
+            fig.add_trace(go.Scatter(
+                x=curve["fpr"],
+                y=curve["tpr"],
+                mode="lines",
+                name=f"{model_name} (AUC={curve['auc']:.3f})",
+                line=dict(color=curve_palette[idx % len(curve_palette)], width=2.5),
+            ))
         fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Random (AUC=0.500)", line=dict(color="gray", width=1, dash="dash")))
         fig.update_layout(
             xaxis_title="False Positive Rate",
@@ -1893,8 +2591,14 @@ def render_model_performance(df, metrics):
     with col2:
         st.markdown(f"#### {pr_title}")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=metrics["rf_rec"], y=metrics["rf_prec"], mode="lines", name="Random Forest", line=dict(color="#2E86C1", width=2.5)))
-        fig.add_trace(go.Scatter(x=metrics["iso_rec"], y=metrics["iso_prec"], mode="lines", name="Isolation Forest", line=dict(color="#E67E22", width=2.5)))
+        for idx, (model_name, curve) in enumerate(metrics.get("model_curves", {}).items()):
+            fig.add_trace(go.Scatter(
+                x=curve["recall"],
+                y=curve["precision"],
+                mode="lines",
+                name=f"{model_name} (AP={curve['ap']:.3f})",
+                line=dict(color=curve_palette[idx % len(curve_palette)], width=2.5),
+            ))
         baseline = (metrics["y_test"] == 1).sum() / len(metrics["y_test"])
         fig.add_trace(go.Scatter(x=[0, 1], y=[baseline, baseline], mode="lines", name=f"Baseline ({baseline:.2f})", line=dict(color="gray", width=1, dash="dash")))
         fig.update_layout(
@@ -1910,9 +2614,15 @@ def render_model_performance(df, metrics):
     st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
 
+    cm_txt_color = "#0f172a" if theme == "light" else "#f0f4ff"
+    cm_axis = dict(color=cm_txt_color, tickfont=dict(color=cm_txt_color), title=dict(font=dict(color=cm_txt_color)))
+
     with col1:
         st.markdown(f"#### {rf_cm_title}")
         cm = metrics["rf_cm"]
+        # Hücre değerine göre otomatik kontrast renk (açık hücre → koyu yazı, koyu hücre → beyaz)
+        cm_max = cm.max()
+        cell_colors = [["#ffffff" if v < cm_max * 0.55 else "#000000" for v in row] for row in cm]
         fig = go.Figure(data=go.Heatmap(
             z=cm,
             x=["Normal", "Theft" if is_en else "Kacak"],
@@ -1921,14 +2631,14 @@ def render_model_performance(df, metrics):
             showscale=False,
             text=cm,
             texttemplate="%{text}",
-            textfont={"size": 22},
+            textfont={"size": 22, "color": cm_txt_color},
         ))
         fig.update_layout(
             xaxis_title="Predicted" if is_en else "Tahmin",
             yaxis_title="Actual" if is_en else "Gercek",
+            xaxis=cm_axis, yaxis={**cm_axis, "autorange": "reversed"},
             height=350,
             margin=dict(l=20, r=20, t=20, b=20),
-            yaxis=dict(autorange="reversed"),
         )
         apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
@@ -1944,14 +2654,14 @@ def render_model_performance(df, metrics):
             showscale=False,
             text=cm,
             texttemplate="%{text}",
-            textfont={"size": 22},
+            textfont={"size": 22, "color": cm_txt_color},
         ))
         fig.update_layout(
             xaxis_title="Predicted" if is_en else "Tahmin",
             yaxis_title="Actual" if is_en else "Gercek",
+            xaxis=cm_axis, yaxis={**cm_axis, "autorange": "reversed"},
             height=350,
             margin=dict(l=20, r=20, t=20, b=20),
-            yaxis=dict(autorange="reversed"),
         )
         apply_plotly_theme(fig, theme)
         st.plotly_chart(fig, use_container_width=True)
@@ -2006,20 +2716,22 @@ def render_model_performance(df, metrics):
 
     with col2:
         st.markdown(f"#### {model_table_title}")
-        model_data = {
-            "Model": ["Random Forest", "XGBoost", "Isolation Forest", "LSTM Autoencoder"],
-            ("Type" if is_en else "Tip"): ["Supervised", "Supervised", "Unsupervised", "Deep Learning"],
-            "ROC-AUC": ["0.9471", "0.9373", "0.8208", "0.7482*"],
-            "F1": ["0.8704", "0.8468", "0.2609", "0.5600*"],
-            ("Advantage" if is_en else "Avantaj"): [
-                "Highest accuracy" if is_en else "En yuksek dogruluk",
-                "Feature importance" if is_en else "Ozellik onemliligi",
-                "No labels needed" if is_en else "Etiket gerektirmez",
-                "Time-series patterning" if is_en else "Zaman serisi analizi",
-            ],
-        }
-        st.dataframe(pd.DataFrame(model_data), use_container_width=True, hide_index=True)
-        st.caption("*Per-customer evaluation" if is_en else "*Musteri bazli degerlendirme")
+        model_table = metrics.get("model_table", pd.DataFrame()).copy()
+        if not model_table.empty:
+            model_table = model_table.rename(columns={"Type": ("Type" if is_en else "Tip")})
+            for col in ["ROC-AUC", "PR-AUC", "Precision", "Recall", "F1"]:
+                if col in model_table.columns:
+                    model_table[col] = model_table[col].map(lambda x: f"{float(x):.4f}")
+            st.dataframe(model_table, use_container_width=True, hide_index=True)
+            st.caption(
+                (
+                    f"Computed from the current test split. Best threshold: {metrics.get('best_threshold', 0.5):.2f}"
+                    if is_en else
+                    f"Guncel test ayrimindan hesaplandi. En iyi esik: {metrics.get('best_threshold', 0.5):.2f}"
+                )
+            )
+        else:
+            st.info("Only fallback scoring is available for this dataset." if is_en else "Bu veri setinde yalnizca fallback skorlama mevcut.")
 
 
 # ========== TAB 4: MUSTERI DETAY ==========
@@ -2047,10 +2759,11 @@ def render_customer_detail(df, raw_df):
             return
 
         select_label = "Select Customer" if is_en else "Musteri Sec"
+        _prob_map = df.set_index("customer_id")["theft_probability"].to_dict()
         selected_id = st.selectbox(
             select_label,
             options=pool["customer_id"].tolist(),
-            format_func=lambda x: f"#{x} ({df[df['customer_id'] == x]['theft_probability'].values[0]:.0%})",
+            format_func=lambda x: f"#{x} ({_prob_map.get(x, 0):.0%})",
         )
 
         cust = df[df["customer_id"] == selected_id].iloc[0]
@@ -2111,7 +2824,8 @@ def render_customer_detail(df, raw_df):
                 )
 
             daily = cust_raw.set_index("timestamp").resample("D")["consumption_kw"].sum().reset_index()
-            bar_colors = ["#E74C3C" if v < daily["consumption_kw"].mean() * 0.3 else "#2E86C1" for v in daily["consumption_kw"]]
+            _daily_mean_thresh = daily["consumption_kw"].mean() * 0.3
+            bar_colors = ["#E74C3C" if v < _daily_mean_thresh else "#2E86C1" for v in daily["consumption_kw"]]
             fig.add_trace(
                 go.Bar(
                     x=daily["timestamp"],
@@ -2196,9 +2910,12 @@ def render_live_simulation(df, raw_df):
     with col3:
         sim_points = st.selectbox("Data Points" if is_en else "Veri Noktasi", [50, 100, 200], index=1)
 
-    normal_sample = df[(df["label"] == 0) & (df["customer_id"] < 200)].head(n_customers - 1)
-    theft_sample = df[(df["label"] == 1) & (df["customer_id"] < 200)].head(1)
-    sim_customers = pd.concat([normal_sample, theft_sample])
+    normal_sample = df[(df["label"] == 0) & (df["customer_id"] < 200)].head(max(n_customers - 1, 1))
+    theft_sample = df[(df["label"] == 1) & (df["customer_id"] < 200)].head(max(1, n_customers - len(normal_sample)))
+    sim_customers = pd.concat([normal_sample, theft_sample]).drop_duplicates(subset=["customer_id"]).head(n_customers)
+    if sim_customers.empty:
+        st.warning("No customers available for simulation." if is_en else "Simulasyon icin musteri bulunamadi.")
+        return
 
     start_btn = "Start Simulation" if is_en else "Simulasyonu Baslat"
     if st.button(start_btn, type="primary", use_container_width=True):
@@ -2284,6 +3001,7 @@ def render_live_simulation(df, raw_df):
             for i in range(len(sim_customers)):
                 fig.update_yaxes(title_text="kW", row=i + 1, col=1)
 
+            apply_plotly_theme(fig, theme)
             chart_placeholder.plotly_chart(fig, use_container_width=True)
 
             m_count.metric("Streaming Samples" if is_en else "Akan Olcum", f"{step + 1}/{sim_points}")
@@ -2308,21 +3026,33 @@ def render_live_simulation(df, raw_df):
         info = "Press start to run real-time simulation preview." if is_en else "Yukaridaki butona basarak canli simulasyonu baslatin."
         st.info(info)
 
-        preview_cust = sim_customers.iloc[0]
-        preview_raw = raw_df[raw_df["customer_id"] == preview_cust["customer_id"]].head(96 * 3)
-        if len(preview_raw) > 0:
-            fig = go.Figure()
+        fig = make_subplots(rows=len(sim_customers), cols=1, shared_xaxes=True, vertical_spacing=0.04)
+        preview_colors = ["#2563eb", "#16a34a", "#ea580c", "#7c3aed", "#dc2626", "#0891b2", "#65a30d", "#0f766e"]
+        plotted = 0
+        for row_idx, (_, preview_cust) in enumerate(sim_customers.iterrows(), start=1):
+            preview_raw = raw_df[raw_df["customer_id"] == preview_cust["customer_id"]].head(96 * 3)
+            if preview_raw.empty:
+                continue
+            plotted += 1
             fig.add_trace(go.Scatter(
                 x=preview_raw["timestamp"],
                 y=preview_raw["consumption_kw"],
                 mode="lines",
-                line=dict(color="#2E86C1", width=1),
+                line=dict(color=preview_colors[(row_idx - 1) % len(preview_colors)], width=1.2),
                 fill="tozeroy",
-                fillcolor="rgba(46,134,193,0.1)",
-                name="Preview" if is_en else "Onizleme",
-            ))
-            preview_title = f"Preview - Customer #{int(preview_cust['customer_id'])}" if is_en else f"Onizleme - Musteri #{int(preview_cust['customer_id'])}"
-            fig.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20), title=preview_title)
+                fillcolor="rgba(37,99,235,0.08)",
+                name=f"#{int(preview_cust['customer_id'])}",
+                showlegend=True,
+            ), row=row_idx, col=1)
+            fig.update_yaxes(title_text=f"#{int(preview_cust['customer_id'])}", row=row_idx, col=1)
+        if plotted > 0:
+            fig.update_layout(
+                height=max(260, 150 * len(sim_customers)),
+                margin=dict(l=20, r=20, t=20, b=20),
+                title=("Preview - Multiple Customers" if is_en else "Onizleme - Coklu Musteri"),
+                legend=dict(orientation="h", y=1.02),
+            )
+            apply_plotly_theme(fig, theme)
             st.plotly_chart(fig, use_container_width=True)
 
 
@@ -2429,10 +3159,8 @@ def render_customer_list(df):
     exp_title = "Risk Band Summary" if is_en else "Risk Bandi Ozeti"
     with st.expander(exp_title):
         risk_order = ["urgent", "critical", "high", "medium", "low"]
-        tmp = view.copy()
-        tmp["risk_key"] = tmp["risk_band"].astype(str).apply(canonical_risk)
-        band_counts = tmp["risk_key"].value_counts().reindex(risk_order, fill_value=0)
-        band_loss = tmp.groupby("risk_key")["est_monthly_loss"].sum().reindex(risk_order, fill_value=0)
+        band_counts = view["risk_key"].value_counts().reindex(risk_order, fill_value=0)
+        band_loss = view.groupby("risk_key")["est_monthly_loss"].sum().reindex(risk_order, fill_value=0)
 
         summary = pd.DataFrame({
             tr("risk_band"): [risk_label(x) for x in risk_order],
@@ -2523,29 +3251,56 @@ def render_live_telemetry():
 def main():
     ensure_ui_state()
 
+    # Rerun isteklerini güvenli şekilde render döngüsü başında işle
+    if st.session_state.pop("_need_rerun", False):
+        st.rerun()
+
+    _start_ingest_watcher()
+    new_ingest_path = poll_ingest_dir()
+    if new_ingest_path is not None:
+        _logger.info("main: new ingest file picked up → %s", new_ingest_path)
+        st.session_state["data_source"] = "external"
+        st.session_state["external_csv_path"] = str(new_ingest_path)
+        load_data.clear()
+        st.toast(f"New data loaded: {new_ingest_path.name}", icon="⚡")
+        st.rerun()
+
     data_source = st.session_state.get("data_source", "sample")
-    external_csv_path = st.session_state.get("external_csv_path", "")
+    external_csv_path = resolve_external_csv_path(st.session_state.get("external_csv_path", ""))
     load_error = None
+
+    # Eğer external seçili ama path yoksa veya dosya mevcut değilse, hemen sample'a düş
+    if data_source == "external" and (not external_csv_path or not os.path.exists(external_csv_path)):
+        if external_csv_path and not os.path.exists(external_csv_path):
+            load_error = f"Dosya bulunamadı: {external_csv_path}"
+        data_source = "sample"
+        external_csv_path = ""
 
     try:
         features_df, raw_df, data_meta = load_data(data_source, external_csv_path)
     except Exception as exc:
-        if data_source == "external":
-            load_error = f"{tr('external_load_error')}: {exc}"
+        _logger.error("load_data failed (source=%s): %s", data_source, exc, exc_info=True)
+        load_error = f"{tr('external_load_error')}: {exc}"
+        try:
             features_df, raw_df, data_meta = load_data("sample", "")
-            data_meta["source"] = "sample"
-        else:
-            raise
+        except Exception as exc2:
+            _logger.error("Sample data fallback also failed: %s", exc2, exc_info=True)
+            st.error(f"Kritik hata — örnek veri de yüklenemedi: {exc2}")
+            st.stop()
+        data_meta["source"] = "sample"
 
-    features_df, metrics = run_models(features_df)
+    features_df, metrics = run_models_v2(features_df)
     filtered_df, threshold = render_sidebar(features_df, data_meta)
 
     theme = st.session_state.get("ui_theme", "dark")
     inject_liquid_spotlight()
     inject_theme_overrides(theme)
+    is_en = st.session_state.get("ui_lang", "tr") == "en"
+    badge_txt = "AI · Anomaly Detection · v2.0" if is_en else "Yapay Zeka · Anomali Tespiti · v2.0"
     st.markdown(
         f"""
         <div class="hero-shell">
+            <div class="hero-badge">⚡ {badge_txt}</div>
             <p class="main-header">MASS-AI Dashboard</p>
             <p class="sub-header">{tr('subtitle')}</p>
         </div>
@@ -2562,13 +3317,13 @@ def main():
         st.sidebar.success(metrics["best_model"])
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        tr("tab_overview"),
-        tr("tab_customers"),
-        tr("tab_timeseries"),
-        tr("tab_models"),
-        tr("tab_detail"),
-        tr("tab_simulation"),
-        tr("tab_telemetry"),
+        f"⚡ {tr('tab_overview')}",
+        f"👥 {tr('tab_customers')}",
+        f"📈 {tr('tab_timeseries')}",
+        f"🎯 {tr('tab_models')}",
+        f"🔍 {tr('tab_detail')}",
+        f"🔴 {tr('tab_simulation')}",
+        f"📡 {tr('tab_telemetry')}",
     ])
 
     with tab1:
@@ -2592,12 +3347,20 @@ def main():
     with tab7:
         render_live_telemetry()
 
-    st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="glass-divider" style="margin-top:2.5rem;"></div>', unsafe_allow_html=True)
     st.markdown(
-        "<div style='text-align:center; color:rgba(245,247,251,0.55); font-size:0.85rem;'>"
-        "MASS-AI v2.0 | Omer Burak Kocak | Marmara Universitesi EEE | Mart 2026"
+        "<div style='"
+        "text-align:center;"
+        "color:var(--text-dim,rgba(240,244,255,0.28));"
+        "font-size:0.78rem;"
+        "letter-spacing:0.06em;"
+        "text-transform:uppercase;"
+        "padding-bottom:1.2rem;"
+        "'>"
+        "MASS-AI v2.0 &nbsp;·&nbsp; Omer Burak Kocak"
+        "&nbsp;·&nbsp; Marmara Universitesi EEE &nbsp;·&nbsp; 2026"
         "</div>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 

@@ -1,9 +1,32 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 from typing import Any
+
+# TODO: centralised logging — writes to logs/mass_ai.log
+_LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(_LOG_DIR / "mass_ai.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+_logger = logging.getLogger("mass_ai_engine")
+
+try:
+    import joblib
+    _JOBLIB_AVAILABLE = True
+except ImportError:
+    _JOBLIB_AVAILABLE = False
+    _logger.warning("joblib not installed — model persistence disabled")
 
 import numpy as np
 import pandas as pd
@@ -102,6 +125,96 @@ def _humanize_pattern(value: Any) -> str:
     return safe_text(value).replace("_", " ")
 
 
+# TODO: ModelRegistry — joblib-backed versioned model persistence
+class ModelRegistry:
+    """Persist and load versioned ML models with joblib.
+
+    Version key is derived from a SHA-1 hash of the feature column list so the
+    same model file is never overwritten by an incompatible schema.
+    """
+
+    def __init__(self, registry_dir: str | Path | None = None):
+        if registry_dir is None:
+            registry_dir = Path(__file__).resolve().parent.parent / "model_registry"
+        self.registry_dir = Path(registry_dir)
+        self.registry_dir.mkdir(parents=True, exist_ok=True)
+        self._manifest: dict[str, dict[str, Any]] = {}
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+    @staticmethod
+    def _schema_hash(feature_cols: list[str]) -> str:
+        return hashlib.sha1("|".join(sorted(feature_cols)).encode()).hexdigest()[:8]
+
+    def _model_path(self, model_name: str, schema_hash: str) -> Path:
+        safe = model_name.replace(" ", "_").lower()
+        return self.registry_dir / f"{safe}_{schema_hash}.joblib"
+
+    # ── public API ────────────────────────────────────────────────────────────
+    def save(
+        self,
+        model_name: str,
+        model_obj: Any,
+        feature_cols: list[str],
+        metrics: dict[str, float],
+        scaler: Any = None,
+    ) -> Path:
+        """Serialise model + scaler to disk and record in the manifest."""
+        if not _JOBLIB_AVAILABLE:
+            raise RuntimeError("joblib is required for model persistence")
+        schema_hash = self._schema_hash(feature_cols)
+        path = self._model_path(model_name, schema_hash)
+        payload = {
+            "model": model_obj,
+            "scaler": scaler,
+            "feature_cols": feature_cols,
+            "metrics": metrics,
+            "saved_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        joblib.dump(payload, path, compress=3)
+        self._manifest[model_name] = {
+            "path": str(path),
+            "schema_hash": schema_hash,
+            "metrics": metrics,
+            "saved_at": payload["saved_at"],
+        }
+        _logger.info("ModelRegistry: saved '%s' → %s (AUC=%.4f)", model_name, path.name, metrics.get("auc", 0))
+        return path
+
+    def load(self, model_name: str, feature_cols: list[str]) -> dict[str, Any] | None:
+        """Load a previously saved model. Returns None if not found."""
+        if not _JOBLIB_AVAILABLE:
+            return None
+        schema_hash = self._schema_hash(feature_cols)
+        path = self._model_path(model_name, schema_hash)
+        if not path.exists():
+            _logger.debug("ModelRegistry: '%s' not found on disk (%s)", model_name, path.name)
+            return None
+        try:
+            payload = joblib.load(path)
+            _logger.info("ModelRegistry: loaded '%s' from %s", model_name, path.name)
+            return payload
+        except Exception as exc:
+            _logger.error("ModelRegistry: failed to load '%s': %s", model_name, exc)
+            return None
+
+    def best_model(self) -> tuple[str, dict[str, Any]] | tuple[None, None]:
+        """Return (model_name, manifest_entry) for the model with the highest AUC."""
+        if not self._manifest:
+            return None, None
+        best_name = max(self._manifest, key=lambda n: self._manifest[n]["metrics"].get("auc", 0))
+        return best_name, self._manifest[best_name]
+
+    def list_versions(self) -> list[dict[str, Any]]:
+        return [
+            {"model_name": name, **entry}
+            for name, entry in sorted(
+                self._manifest.items(),
+                key=lambda item: item[1]["metrics"].get("auc", 0),
+                reverse=True,
+            )
+        ]
+
+
 class MassAIEngine:
     def __init__(self):
         self.df_raw = None
@@ -117,6 +230,8 @@ class MassAIEngine:
         self.last_preset_name: str | None = None
         self.last_preset_summary: str | None = None
         self.last_explainability_summary: str | None = None
+        # TODO: attach ModelRegistry for joblib-backed versioned persistence
+        self.registry = ModelRegistry()
 
     def reset_state(self):
         self.df_raw = None
@@ -597,6 +712,16 @@ class MassAIEngine:
 
         self.log(f"Training complete: {', '.join(self.models.keys())}")
         self.log(f"Isolation baseline scores prepared: min={iso_scores_full.min():.3f}, max={iso_scores_full.max():.3f}")
+        # TODO: persist all trained models via ModelRegistry
+        for model_name, model_obj in self.models.items():
+            metrics = {k: float(v) for k, v in self.results.get(model_name, {}).items() if isinstance(v, (int, float))}
+            try:
+                self.registry.save(model_name, model_obj, self.feature_cols, metrics, scaler=self.scaler)
+            except Exception as exc:
+                _logger.warning("ModelRegistry: could not save '%s': %s", model_name, exc)
+        best_name, best_entry = self.registry.best_model()
+        if best_name:
+            _logger.info("ModelRegistry: best model is '%s' (AUC=%.4f)", best_name, best_entry["metrics"].get("auc", 0))
         return self.results
 
     def _robust_z_scores(self, series: pd.Series) -> pd.Series:
