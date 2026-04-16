@@ -31,6 +31,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ui_helpers import action_card, friendly_error  # noqa: E402
+
 # TODO: centralised logging — mirrors mass_ai_engine setup
 _LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -219,7 +222,11 @@ def show_evidence_dialog(meter_id: str, score: float, severity: str, created_at)
     try:
         ev = fetch_meter_evidence(meter_id, hours=2)
     except Exception as exc:
-        st.error(f"{'Evidence fetch failed' if is_en else 'Kanit verisi cekilemedi'}: {exc}")
+        friendly_error(
+            "Evidence fetch failed" if is_en else "Kanit verisi cekilemedi",
+            "Check DB connection or telemetry availability." if is_en else "Veritabani baglantisini / telemetri varligini kontrol edin.",
+            detail=exc,
+        )
         return
 
     df_raw = ev["raw"]
@@ -1913,6 +1920,33 @@ def run_models_v2(features_df):
         0.0,
     )
     features_df["risk_level"] = features_df["risk_band"]
+    features_df["risk_category"] = features_df["risk_band"]
+    features_df["priority_index"] = np.round(
+        features_df["risk_score"] * 0.65
+        + features_df["est_monthly_loss"].clip(upper=5000) * 0.01,
+        2,
+    )
+
+    try:
+        from mass_ai_engine import MassAIEngine
+
+        features_df = MassAIEngine()._build_explainability_columns(features_df)
+    except Exception as exc:
+        _logger.warning("run_models_v2: explainability enrichment skipped: %s", exc)
+        fallback_reason = np.where(
+            features_df["theft_probability"] >= optimal_thresh,
+            "high theft probability",
+            "variance monitor",
+        )
+        features_df["risk_reason_1"] = fallback_reason
+        features_df["risk_reason_2"] = "-"
+        features_df["risk_reason_3"] = "-"
+        features_df["risk_drivers"] = fallback_reason
+        features_df["risk_summary"] = np.where(
+            features_df["theft_probability"] >= optimal_thresh,
+            "High risk case should be reviewed first.",
+            "Customer remains in monitoring queue.",
+        )
 
     metrics = {
         "rf_fpr": rf_fpr,
@@ -2090,12 +2124,50 @@ def render_overview(df, threshold, raw_df):
     critical_count = (_risk_keys == "critical").sum()
     monthly_loss = df["est_monthly_loss"].sum() if "est_monthly_loss" in df.columns else 0
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric(tr("total_customers"), f"{total:,}")
-    col2.metric(tr("detected"), f"{detected}", delta=f"%{detection_rate:.1f}", delta_color="inverse")
-    col3.metric(tr("urgent"), f"{urgent_count}", delta=tr("field_team") if urgent_count > 0 else tr("clean"), delta_color="inverse" if urgent_count > 0 else "normal")
-    col4.metric(tr("critical"), f"{critical_count}")
-    col5.metric(tr("estimated_loss"), f"{tr('currency_symbol')} {monthly_loss:,.0f}", delta_color="inverse")
+    # ── Row 1 — Action summary (decision-first hierarchy) ────────────────────
+    hot_region = "-"
+    hot_region_score = 0.0
+    if "region" in df.columns and len(df) > 0:
+        region_stats = df.groupby("region")["risk_score"].mean().sort_values(ascending=False)
+        if not region_stats.empty:
+            hot_region = str(region_stats.index[0])
+            hot_region_score = float(region_stats.iloc[0])
+
+    pending_investigations = int(critical_count + urgent_count)
+    high_risk_tone = "danger" if detected > 0 else "ok"
+    region_tone = "warn" if hot_region_score >= 60 else "neutral"
+    pending_tone = "danger" if pending_investigations > 0 else "ok"
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        action_card(
+            label=tr("high_risk_customers") if "high_risk_customers" in (_I18N.get(st.session_state.get("ui_lang", "tr"), {}) if "_I18N" in globals() else {}) else "Yuksek riskli musteri" if st.session_state.get("ui_lang", "tr") == "tr" else "High-risk customers",
+            value=f"{int(detected)}",
+            subtitle=f"%{detection_rate:.1f} " + ("of portfolio - open worklist" if st.session_state.get("ui_lang", "tr") == "en" else "portfoy - worklist'te incele"),
+            tone=high_risk_tone,
+        )
+    with col_b:
+        action_card(
+            label="En sicak bolge" if st.session_state.get("ui_lang", "tr") == "tr" else "Hottest region",
+            value=hot_region.title() if hot_region != "-" else "-",
+            subtitle=("ortalama risk skoru " if st.session_state.get("ui_lang", "tr") == "tr" else "avg risk score ") + f"{hot_region_score:.0f}",
+            tone=region_tone,
+        )
+    with col_c:
+        action_card(
+            label="Bekleyen inceleme" if st.session_state.get("ui_lang", "tr") == "tr" else "Pending investigations",
+            value=f"{pending_investigations}",
+            subtitle=f"{critical_count} critical + {urgent_count} urgent",
+            tone=pending_tone,
+        )
+
+    with st.expander("KPI detay" if st.session_state.get("ui_lang", "tr") == "tr" else "KPI detail", expanded=False):
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric(tr("total_customers"), f"{total:,}")
+        col2.metric(tr("detected"), f"{detected}", delta=f"%{detection_rate:.1f}", delta_color="inverse")
+        col3.metric(tr("urgent"), f"{urgent_count}", delta=tr("field_team") if urgent_count > 0 else tr("clean"), delta_color="inverse" if urgent_count > 0 else "normal")
+        col4.metric(tr("critical"), f"{critical_count}")
+        col5.metric(tr("estimated_loss"), f"{tr('currency_symbol')} {monthly_loss:,.0f}", delta_color="inverse")
 
     st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     st.markdown(f"### {tr('regional_map')}")
@@ -2153,86 +2225,97 @@ def render_overview(df, threshold, raw_df):
     st.plotly_chart(map_fig, use_container_width=True)
 
     st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
+    with st.expander("Istatistik detayi" if st.session_state.get("ui_lang", "tr") == "tr" else "Statistical detail", expanded=False):
+        col1, col2 = st.columns(2)
 
-    with col1:
-        st.markdown(f"### {tr('risk_distribution')}")
-        risk_counts = df["risk_level"].astype(str).value_counts()
-        pie_labels = [risk_label(item) for item in risk_counts.index]
-        if theme == "light":
-            pie_colors = ["#27ae60", "#3498db", "#f1c40f", "#e67e22", "#e74c3c"]
-            center_fill = "rgba(255,255,255,0.76)"
-        else:
-            pie_colors = ["#2ecc71", "#5dade2", "#f4d03f", "#eb984e", "#ec7063"]
-            center_fill = "rgba(10,13,17,0.88)"
-        donut_fig = go.Figure(
-            data=[go.Pie(
-                labels=pie_labels,
-                values=risk_counts.values,
-                hole=0.58,
-                sort=False,
-                direction="clockwise",
-                marker=dict(colors=pie_colors[: len(risk_counts)], line=dict(color="rgba(255,255,255,0.08)", width=1.2)),
-                textinfo="label+percent",
-                textfont_size=13,
-                hovertemplate="%{label}: %{value} <extra></extra>",
-            )]
-        )
-        donut_fig.add_annotation(
-            text=tr("risk_mix"),
-            x=0.5,
-            y=0.5,
-            showarrow=False,
-            font=dict(size=18, color="#101418" if theme == "light" else "#f5f7fb"),
-        )
-        donut_fig.add_shape(type="circle", xref="paper", yref="paper", x0=0.36, y0=0.36, x1=0.64, y1=0.64, fillcolor=center_fill, line=dict(color="rgba(255,255,255,0.06)", width=1))
-        donut_fig.update_layout(height=360, margin=dict(l=20, r=20, t=20, b=20), showlegend=False)
-        apply_plotly_theme(donut_fig, theme)
-        st.plotly_chart(donut_fig, use_container_width=True)
+        with col1:
+            st.markdown(f"### {tr('risk_distribution')}")
+            risk_counts = df["risk_level"].astype(str).value_counts()
+            pie_labels = [risk_label(item) for item in risk_counts.index]
+            if theme == "light":
+                pie_colors = ["#27ae60", "#3498db", "#f1c40f", "#e67e22", "#e74c3c"]
+                center_fill = "rgba(255,255,255,0.76)"
+            else:
+                pie_colors = ["#2ecc71", "#5dade2", "#f4d03f", "#eb984e", "#ec7063"]
+                center_fill = "rgba(10,13,17,0.88)"
+            donut_fig = go.Figure(
+                data=[go.Pie(
+                    labels=pie_labels,
+                    values=risk_counts.values,
+                    hole=0.58,
+                    sort=False,
+                    direction="clockwise",
+                    marker=dict(colors=pie_colors[: len(risk_counts)], line=dict(color="rgba(255,255,255,0.08)", width=1.2)),
+                    textinfo="label+percent",
+                    textfont_size=13,
+                    hovertemplate="%{label}: %{value} <extra></extra>",
+                )]
+            )
+            donut_fig.add_annotation(
+                text=tr("risk_mix"),
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=18, color="#101418" if theme == "light" else "#f5f7fb"),
+            )
+            donut_fig.add_shape(type="circle", xref="paper", yref="paper", x0=0.36, y0=0.36, x1=0.64, y1=0.64, fillcolor=center_fill, line=dict(color="rgba(255,255,255,0.06)", width=1))
+            donut_fig.update_layout(height=360, margin=dict(l=20, r=20, t=20, b=20), showlegend=False)
+            apply_plotly_theme(donut_fig, theme)
+            st.plotly_chart(donut_fig, use_container_width=True)
 
-    with col2:
-        st.markdown(f"### {tr('prob_distribution')}")
-        histogram_fig = go.Figure()
-        histogram_colors = {
-            "residential": "#4f46e5",
-            "commercial": "#06b6d4",
-            "industrial": "#f97316",
-        }
-        for profile in ["residential", "commercial", "industrial"]:
-            subset = df[df["profile"] == profile]
-            histogram_fig.add_trace(go.Histogram(
-                x=subset["theft_probability"],
-                name=profile_label(profile),
-                marker_color=histogram_colors[profile],
-                opacity=0.72,
-                nbinsx=30,
-            ))
-        histogram_fig.update_layout(
-            barmode="overlay",
-            height=360,
-            xaxis_title=tr("probability"),
-            yaxis_title=tr("histogram_y_axis"),
-            margin=dict(l=20, r=20, t=20, b=20),
-        )
-        apply_plotly_theme(histogram_fig, theme)
-        st.plotly_chart(histogram_fig, use_container_width=True)
+        with col2:
+            st.markdown(f"### {tr('prob_distribution')}")
+            histogram_fig = go.Figure()
+            histogram_colors = {
+                "residential": "#4f46e5",
+                "commercial": "#06b6d4",
+                "industrial": "#f97316",
+            }
+            for profile in ["residential", "commercial", "industrial"]:
+                subset = df[df["profile"] == profile]
+                histogram_fig.add_trace(go.Histogram(
+                    x=subset["theft_probability"],
+                    name=profile_label(profile),
+                    marker_color=histogram_colors[profile],
+                    opacity=0.72,
+                    nbinsx=30,
+                ))
+            histogram_fig.update_layout(
+                barmode="overlay",
+                height=360,
+                xaxis_title=tr("probability"),
+                yaxis_title=tr("histogram_y_axis"),
+                margin=dict(l=20, r=20, t=20, b=20),
+            )
+            apply_plotly_theme(histogram_fig, theme)
+            st.plotly_chart(histogram_fig, use_container_width=True)
 
+    # ── Row 3 — Triage list (top alerts) ─────────────────────────────────────
     st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
     st.markdown(f"### {tr('alerts')}")
-    alerts = df[df["theft_probability"] >= threshold].sort_values("theft_probability", ascending=False)
+    alerts = df[df["theft_probability"] >= threshold].sort_values("theft_probability", ascending=False).head(10)
     if len(alerts) == 0:
         st.success(tr("no_alerts"))
     else:
-        st.warning(f"**{len(alerts)}** {tr('suspicion_alarm')} (>= {threshold:.0%})")
-        display_df = alerts[["customer_id", "profile", "theft_probability", "risk_level", "mean_consumption", "zero_measurement_pct", "sudden_change_ratio"]].copy()
-        display_df.columns = [tr("id"), tr("profile"), tr("probability"), tr("risk"), tr("avg_consumption"), tr("zero_pct"), tr("sudden_change")]
-        display_df[tr("profile")] = display_df[tr("profile")].map(profile_label)
-        display_df[tr("risk")] = display_df[tr("risk")].map(risk_label)
-        display_df[tr("probability")] = display_df[tr("probability")].apply(lambda x: f"{x:.1%}")
-        display_df[tr("zero_pct")] = display_df[tr("zero_pct")].apply(lambda x: f"{x:.1%}")
-        display_df[tr("sudden_change")] = display_df[tr("sudden_change")].apply(lambda x: f"{x:.4f}")
-        display_df[tr("avg_consumption")] = display_df[tr("avg_consumption")].apply(lambda x: f"{x:.2f} kW")
-        st.dataframe(display_df, use_container_width=True, height=350)
+        is_en = st.session_state.get("ui_lang", "tr") == "en"
+        st.caption(("Top 10 cases sorted by probability. Click " if is_en else "Olasiliga gore ilk 10 vaka. ")
+                   + "**Open** " + ("to jump to customer detail." if is_en else "tusu detay sayfasina gider."))
+        header_cols = st.columns([1.2, 1, 1.2, 2.5, 0.8])
+        header_cols[0].markdown(f"**{tr('id')}**")
+        header_cols[1].markdown(f"**{tr('probability')}**")
+        header_cols[2].markdown(f"**{tr('risk')}**")
+        header_cols[3].markdown(f"**{'Reason' if is_en else 'Neden'}**")
+        header_cols[4].markdown("**" + ("Open" if is_en else "Ac") + "**")
+        for _, row in alerts.iterrows():
+            rc = st.columns([1.2, 1, 1.2, 2.5, 0.8])
+            rc[0].write(f"#{int(row['customer_id'])}")
+            rc[1].write(f"{row['theft_probability']:.1%}")
+            rc[2].write(risk_label(str(row.get("risk_level", "-"))))
+            reason_text = str(row.get("risk_reason_1", "-")) or "-"
+            rc[3].write(reason_text[:72])
+            if rc[4].button("Ac" if not is_en else "Open", key=f"triage_open_{int(row['customer_id'])}"):
+                st.session_state["selected_customer"] = int(row["customer_id"])
+                st.session_state["_need_rerun"] = True
 
     if _PSYCOPG2_AVAILABLE:
         st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
@@ -2259,7 +2342,11 @@ def render_overview(df, threshold, raw_df):
                         st.session_state["popup_time"] = str(row["created_at"])
             except Exception as exc:
                 st.session_state["db_alerts"] = pd.DataFrame()
-                st.caption(f"{tr('db_unavailable')}: {exc}")
+                friendly_error(
+                    tr("db_unavailable"),
+                    "Start the realtime ingest stack or load demo telemetry." if is_en else "Realtime ingest yigitini baslatin veya demo telemetri yukleyin.",
+                    detail=exc,
+                )
 
         if st.session_state.get("popup_meter"):
             show_evidence_dialog(
@@ -2274,6 +2361,7 @@ def render_overview(df, threshold, raw_df):
 
         if df_al.empty:
             st.info(tr("no_live_alert"))
+            st.caption("No streaming telemetry yet. Load the bundled demo CSV from the **Telemetry** tab to populate this panel." if is_en else "Henuz canli telemetri yok. **Telemetri** sekmesinden demo CSV'yi yukleyerek bu paneli besleyebilirsiniz.")
         else:
             kritik = df_al[df_al["severity"] == "KRITIK"]
             if not kritik.empty:
@@ -2556,6 +2644,80 @@ def render_model_performance(df, metrics):
 
     st.markdown(f"### {title}")
 
+    model_table = metrics.get("model_table", pd.DataFrame()).copy()
+    if not model_table.empty:
+        best_model_key = metrics.get("best_model_key", model_table.iloc[0]["Model"])
+        comparison_df = model_table.sort_values(["ROC-AUC", "PR-AUC", "F1"], ascending=False).reset_index(drop=True)
+        best_auc = float(comparison_df["ROC-AUC"].max())
+        comparison_df["Gap vs Best ROC-AUC"] = (best_auc - comparison_df["ROC-AUC"]).round(4)
+
+        def model_use_case(name: str) -> str:
+            mapping_en = {
+                "Stacking Ensemble": "Best overall ranking for analyst queue",
+                "Random Forest": "Reliable baseline and feature importance",
+                "XGBoost": "Strong precision on labeled fraud patterns",
+                "Gradient Boosting": "Secondary challenger with different error shape",
+                "Logistic Regression": "Simple calibrated benchmark",
+                "Isolation Forest": "Cold-start anomaly screen without labels",
+            }
+            mapping_tr = {
+                "Stacking Ensemble": "Analist kuyrugu icin en guclu genel siralama",
+                "Random Forest": "Guvenilir baseline ve ozellik onemi",
+                "XGBoost": "Etiketli kacak paternlerinde guclu hassasiyet",
+                "Gradient Boosting": "Farkli hata profiline sahip challenger",
+                "Logistic Regression": "Basit kalibrasyon benchmark'i",
+                "Isolation Forest": "Etiketsiz soguk baslangic anomali ekrani",
+            }
+            return (mapping_en if is_en else mapping_tr).get(name, "-" if is_en else "-")
+
+        comparison_df["Use Case"] = comparison_df["Model"].map(model_use_case)
+
+        st.markdown("#### Champion vs Challengers" if is_en else "#### Champion ve Challenger'lar")
+        top_cards = comparison_df.head(min(3, len(comparison_df)))
+        card_cols = st.columns(len(top_cards))
+        for col, (_, row) in zip(card_cols, top_cards.iterrows()):
+            tone = "danger" if row["Model"] == best_model_key else ("warn" if row["Gap vs Best ROC-AUC"] <= 0.02 else "neutral")
+            subtitle = (
+                f"PR-AUC {row['PR-AUC']:.3f} | F1 {row['F1']:.3f}"
+                if is_en else
+                f"PR-AUC {row['PR-AUC']:.3f} | F1 {row['F1']:.3f}"
+            )
+            with col:
+                action_card(
+                    row["Model"],
+                    f"ROC-AUC {row['ROC-AUC']:.3f}",
+                    subtitle,
+                    tone=tone,
+                )
+
+        champion_note = (
+            f"Champion: {best_model_key}. Best threshold for the current split: {metrics.get('best_threshold', 0.5):.2f}."
+            if is_en else
+            f"Champion: {best_model_key}. Guncel split icin en iyi esik: {metrics.get('best_threshold', 0.5):.2f}."
+        )
+        st.caption(champion_note)
+
+        comparison_display = comparison_df[
+            ["Model", "Type", "ROC-AUC", "PR-AUC", "Precision", "Recall", "F1", "Gap vs Best ROC-AUC", "Use Case"]
+        ].copy()
+        if not is_en:
+            comparison_display = comparison_display.rename(
+                columns={
+                    "Model": "Model",
+                    "Type": "Tip",
+                    "Precision": "Precision",
+                    "Recall": "Recall",
+                    "Use Case": "Kullanim Amaci",
+                    "Gap vs Best ROC-AUC": "En Iyi ROC-AUC Farki",
+                }
+            )
+        for col_name in ["ROC-AUC", "PR-AUC", "Precision", "Recall", "F1", "Gap vs Best ROC-AUC", "En Iyi ROC-AUC Farki"]:
+            if col_name in comparison_display.columns:
+                comparison_display[col_name] = comparison_display[col_name].map(lambda value: f"{float(value):.4f}")
+        st.dataframe(comparison_display, use_container_width=True, hide_index=True)
+
+        st.markdown('<div class="glass-divider"></div>', unsafe_allow_html=True)
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("RF ROC-AUC", f"{metrics['rf_auc']:.4f}")
     col2.metric("RF F1", f"{metrics['rf_f1']:.4f}")
@@ -2716,7 +2878,6 @@ def render_model_performance(df, metrics):
 
     with col2:
         st.markdown(f"#### {model_table_title}")
-        model_table = metrics.get("model_table", pd.DataFrame()).copy()
         if not model_table.empty:
             model_table = model_table.rename(columns={"Type": ("Type" if is_en else "Tip")})
             for col in ["ROC-AUC", "PR-AUC", "Precision", "Recall", "F1"]:
@@ -2895,6 +3056,7 @@ def render_customer_detail(df, raw_df):
 # ========== TAB 5: CANLI SIMULASYON ==========
 def render_live_simulation(df, raw_df):
     is_en = st.session_state.get("ui_lang", "tr") == "en"
+    theme = st.session_state.get("ui_theme", "dark")
 
     title = "Live Simulation Mode" if is_en else "Canli Simulasyon Modu"
     desc = "Watch streaming telemetry and anomaly signals in real time." if is_en else "Gercek zamanli akan veri simulasyonu - MASS sayaclarindan gelen veriyi canli izleyin."
@@ -3056,19 +3218,86 @@ def render_live_simulation(df, raw_df):
             st.plotly_chart(fig, use_container_width=True)
 
 
-def render_customer_list(df):
+def _trend_label(row: pd.Series, is_en: bool) -> str:
+    relative_trend = float(row.get("relative_trend", 1.0) or 1.0)
+    trend_slope = float(row.get("trend_slope", 0.0) or 0.0)
+    if relative_trend <= 0.82 or trend_slope <= -0.10:
+        return "Sharp drop" if is_en else "Sert dusus"
+    if relative_trend <= 0.95 or trend_slope < -0.01:
+        return "Falling" if is_en else "Dusuyor"
+    if relative_trend >= 1.12 or trend_slope >= 0.10:
+        return "Rising" if is_en else "Yukseliyor"
+    if 0.95 <= relative_trend <= 1.05 and abs(trend_slope) <= 0.01:
+        return "Stable" if is_en else "Stabil"
+    return "Volatile" if is_en else "Dalgali"
+
+
+def _priority_label(row: pd.Series, is_en: bool) -> str:
+    priority_index = float(row.get("priority_index", row.get("risk_score", 0.0)) or 0.0)
+    risk_key = canonical_risk(str(row.get("risk_band", row.get("risk_category", "medium"))))
+    if risk_key == "urgent" or priority_index >= 80:
+        return "P1 - Immediate" if is_en else "P1 - Hemen"
+    if risk_key == "critical" or priority_index >= 65:
+        return "P2 - Today" if is_en else "P2 - Bugun"
+    if risk_key == "high" or priority_index >= 50:
+        return "P3 - Queue" if is_en else "P3 - Sirada"
+    return "P4 - Monitor" if is_en else "P4 - Izle"
+
+
+def _recommended_action(row: pd.Series, is_en: bool) -> str:
+    risk_key = canonical_risk(str(row.get("risk_band", row.get("risk_category", "medium"))))
+    zero_pct = float(row.get("zero_measurement_pct", 0.0) or 0.0)
+    if risk_key in {"urgent", "critical"}:
+        return "Escalate to field review" if is_en else "Saha incelemesine gonder"
+    if zero_pct >= 0.15:
+        return "Check meter / outage logs" if is_en else "Sayac ve kesinti kayitlarini kontrol et"
+    return "Keep in analyst queue" if is_en else "Analist kuyrugunda tut"
+
+
+def _prepare_customer_worklist(df: pd.DataFrame, raw_df: pd.DataFrame, is_en: bool) -> pd.DataFrame:
+    view = df.copy()
+    view["risk_key"] = view["risk_band"].astype(str).apply(canonical_risk)
+    if "priority_index" not in view.columns:
+        view["priority_index"] = np.round(
+            view["risk_score"] * 0.65 + view["est_monthly_loss"].clip(upper=5000) * 0.01,
+            2,
+        )
+    if "risk_reason_1" not in view.columns:
+        fallback_reason = np.where(
+            view["theft_probability"] >= 0.5,
+            "high theft probability",
+            "monitor consumption variance",
+        )
+        view["risk_reason_1"] = fallback_reason
+
+    last_seen_map = pd.Series(dtype="datetime64[ns]")
+    if not raw_df.empty and {"customer_id", "timestamp"}.issubset(raw_df.columns):
+        seen = raw_df[["customer_id", "timestamp"]].copy()
+        seen["timestamp"] = pd.to_datetime(seen["timestamp"], errors="coerce")
+        seen = seen.dropna(subset=["timestamp"])
+        if not seen.empty:
+            last_seen_map = seen.groupby("customer_id")["timestamp"].max()
+
+    view["last_seen_ts"] = view["customer_id"].map(last_seen_map)
+    view["last_seen"] = view["last_seen_ts"].apply(
+        lambda ts: ts.strftime("%Y-%m-%d %H:%M") if pd.notna(ts) else "-"
+    )
+    view["trend_label"] = view.apply(lambda row: _trend_label(row, is_en), axis=1)
+    view["priority_label"] = view.apply(lambda row: _priority_label(row, is_en), axis=1)
+    view["recommended_action"] = view.apply(lambda row: _recommended_action(row, is_en), axis=1)
+    return view
+
+
+def render_customer_list(df, raw_df):
     is_en = st.session_state.get("ui_lang", "tr") == "en"
 
-    title = "All Customers - 2000 Records" if is_en else "Tum Musteriler - 2000 Kayit"
+    title = "Investigation Worklist" if is_en else "Inceleme Is Listesi"
     st.markdown(f"### {title}")
 
-    band_colors = {
-        "urgent": "#E74C3C",
-        "critical": "#E67E22",
-        "high": "#F1C40F",
-        "medium": "#3498DB",
-        "low": "#27AE60",
-    }
+    worklist = _prepare_customer_worklist(df, raw_df, is_en)
+    if worklist.empty:
+        st.info("No customers available." if is_en else "Gosterilecek musteri yok.")
+        return
 
     c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
     with c1:
@@ -3087,21 +3316,22 @@ def render_customer_list(df):
     with c3:
         profile_sel = st.multiselect(
             tr("profile"),
-            ["residential", "commercial", "industrial"],
-            default=["residential", "commercial", "industrial"],
+            sorted(worklist["profile"].astype(str).unique().tolist()),
+            default=sorted(worklist["profile"].astype(str).unique().tolist()),
             format_func=profile_label,
         )
 
     sort_opts = {
+        ("Priority Desc" if is_en else "Oncelik Azalan"): ("priority_index", False),
         ("Risk Score Desc" if is_en else "Risk Skoru Azalan"): ("risk_score", False),
         ("Monthly Loss Desc" if is_en else "Aylik Kayip Azalan"): ("est_monthly_loss", False),
+        ("Last Seen Desc" if is_en else "Son Gorus Azalan"): ("last_seen_ts", False),
         ("Customer ID Asc" if is_en else "Musteri ID Artan"): ("customer_id", True),
     }
     with c4:
         sort_col = st.selectbox("Sort" if is_en else "Siralama", list(sort_opts.keys()))
 
-    view = df.copy()
-    view["risk_key"] = view["risk_band"].astype(str).apply(canonical_risk)
+    view = worklist.copy()
 
     if search:
         view = view[view["customer_id"].astype(str).str.contains(search)]
@@ -3118,43 +3348,100 @@ def render_customer_list(df):
     customer_txt = "customers" if is_en else "musteri"
     st.caption(f"{shown_txt}: **{len(view)}** / {len(df)} {customer_txt}")
 
-    display = view[["customer_id", "profile", "risk_score", "risk_key", "theft_probability", "est_monthly_loss"]].copy()
-    id_col = tr("customer_id")
-    profile_col = tr("profile")
-    risk_score_col = "Risk Score" if is_en else "Risk Skoru"
-    risk_band_col = tr("risk_band")
-    prob_col = tr("probability")
-    loss_col = ("Monthly Loss" if is_en else "Aylik Kayip") + f" ({tr('currency_symbol')})"
+    headline_cols = st.columns(3)
+    with headline_cols[0]:
+        urgent_cases = int(view["risk_key"].isin(["urgent", "critical"]).sum())
+        action_card(
+            "Immediate cases" if is_en else "Hemen bakilacak",
+            str(urgent_cases),
+            "Critical + urgent customers" if is_en else "Kritik ve acil musteriler",
+            tone="danger" if urgent_cases else "ok",
+        )
+    with headline_cols[1]:
+        top_reason = str(view.iloc[0].get("risk_reason_1", "-")) if not view.empty else "-"
+        action_card(
+            "Top driver" if is_en else "Ana neden",
+            top_reason[:44] if top_reason and top_reason != "-" else ("Stable queue" if is_en else "Kuyruk stabil"),
+            "Most urgent work item" if is_en else "En acil kayit",
+            tone="warn",
+        )
+    with headline_cols[2]:
+        latest_seen = view["last_seen"].iloc[0] if not view.empty else "-"
+        action_card(
+            "Latest signal" if is_en else "Son sinyal",
+            latest_seen,
+            "Newest customer activity in queue" if is_en else "Kuyruktaki en yeni musteri aktivitesi",
+            tone="neutral",
+        )
 
-    display.columns = [id_col, profile_col, risk_score_col, risk_band_col, prob_col, loss_col]
-    display[profile_col] = display[profile_col].map(profile_label)
-    display[risk_band_col] = display[risk_band_col].map(risk_label)
-    display[prob_col] = (display[prob_col] * 100).round(2).astype(str) + "%"
-    display[loss_col] = display[loss_col].apply(lambda x: f"{tr('currency_symbol')}{x:,.0f}" if x > 0 else "-")
+    st.markdown("#### Worklist" if is_en else "#### Is Kuyrugu")
+    header_cols = st.columns([1.0, 1.1, 2.7, 1.1, 1.3, 1.0])
+    header_cols[0].markdown(f"**{tr('customer_id')}**")
+    header_cols[1].markdown(f"**{'Priority' if is_en else 'Oncelik'}**")
+    header_cols[2].markdown(f"**{'Reason' if is_en else 'Neden'}**")
+    header_cols[3].markdown(f"**{'Trend' if is_en else 'Trend'}**")
+    header_cols[4].markdown(f"**{'Last Seen' if is_en else 'Last Seen'}**")
+    header_cols[5].markdown(f"**{'Action' if is_en else 'Aksiyon'}**")
 
-    def color_band(val):
-        c = band_colors.get(canonical_risk(val), "#999")
-        return f"background-color:{c}22; color:{c}; font-weight:600"
+    top_rows = view.sort_values(["priority_index", "theft_probability"], ascending=False).head(14)
+    for _, row in top_rows.iterrows():
+        rc = st.columns([1.0, 1.1, 2.7, 1.1, 1.3, 1.0])
+        rc[0].write(f"#{int(row['customer_id'])}")
+        rc[1].write(str(row.get("priority_label", "-")))
+        rc[2].write(str(row.get("risk_reason_1", "-"))[:90])
+        rc[2].caption(str(row.get("recommended_action", "-")))
+        rc[3].write(str(row.get("trend_label", "-")))
+        rc[4].write(str(row.get("last_seen", "-")))
+        if rc[5].button("Open" if is_en else "Ac", key=f"worklist_open_{int(row['customer_id'])}"):
+            st.session_state["selected_customer"] = int(row["customer_id"])
+            st.toast(
+                f"Customer #{int(row['customer_id'])} pinned for detail view."
+                if is_en else
+                f"Musteri #{int(row['customer_id'])} detay icin secildi.",
+            )
 
-    def color_score(val):
-        if val >= 85:
-            return "color:#E74C3C; font-weight:700"
-        if val >= 70:
-            return "color:#E67E22; font-weight:600"
-        if val >= 45:
-            return "color:#F1C40F"
-        return "color:#27AE60"
+    full_title = "Full comparison table" if is_en else "Tam karsilastirma tablosu"
+    with st.expander(full_title):
+        table = view[
+            [
+                "customer_id",
+                "profile",
+                "risk_score",
+                "priority_index",
+                "risk_key",
+                "theft_probability",
+                "est_monthly_loss",
+                "risk_reason_1",
+                "trend_label",
+                "last_seen",
+            ]
+        ].copy()
+        table.columns = [
+            tr("customer_id"),
+            tr("profile"),
+            "Risk Score" if is_en else "Risk Skoru",
+            "Priority Index" if is_en else "Oncelik Indeksi",
+            tr("risk_band"),
+            tr("probability"),
+            ("Monthly Loss" if is_en else "Aylik Kayip") + f" ({tr('currency_symbol')})",
+            "Reason" if is_en else "Neden",
+            "Trend",
+            "Last Seen" if is_en else "Last Seen",
+        ]
+        table[tr("profile")] = table[tr("profile")].map(profile_label)
+        table[tr("risk_band")] = table[tr("risk_band")].map(risk_label)
+        table[tr("probability")] = (table[tr("probability")] * 100).round(1).astype(str) + "%"
+        loss_col = ("Monthly Loss" if is_en else "Aylik Kayip") + f" ({tr('currency_symbol')})"
+        table[loss_col] = table[loss_col].apply(lambda x: f"{tr('currency_symbol')}{x:,.0f}" if x > 0 else "-")
+        st.dataframe(table, use_container_width=True, hide_index=True, height=420)
 
-    styled = display.style.map(color_band, subset=[risk_band_col]).map(color_score, subset=[risk_score_col])
-    st.dataframe(styled, use_container_width=True, height=520, hide_index=True)
-
-    csv = view.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download CSV" if is_en else "CSV Indir",
-        csv,
-        file_name=f"customers_{time.strftime('%Y%m%d_%H%M')}.csv" if is_en else f"musteriler_{time.strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv",
-    )
+        csv = view.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download CSV" if is_en else "CSV Indir",
+            csv,
+            file_name=f"customers_{time.strftime('%Y%m%d_%H%M')}.csv" if is_en else f"musteriler_{time.strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+        )
 
     exp_title = "Risk Band Summary" if is_en else "Risk Bandi Ozeti"
     with st.expander(exp_title):
@@ -3170,32 +3457,73 @@ def render_customer_list(df):
         st.dataframe(summary, use_container_width=True, hide_index=True)
 
 
-def render_live_telemetry():
-    """Show the latest rows from Postgres raw_telemetry with a manual refresh button."""
-    theme = st.session_state.get("ui_theme", "dark")
+_DEMO_TELEMETRY_CSV = Path(__file__).resolve().parent.parent / "data" / "demo" / "demo_telemetry.csv"
 
-    if not _PSYCOPG2_AVAILABLE:
-        st.warning(f"{tr('telemetry_psycopg_missing')}\n\n`pip install psycopg2-binary`")
-        return
+
+def _load_demo_telemetry_csv(limit: int = 500) -> pd.DataFrame:
+    """Read the bundled demo telemetry CSV and align it to the live schema."""
+    if not _DEMO_TELEMETRY_CSV.exists():
+        raise FileNotFoundError(
+            f"Demo telemetry not found at {_DEMO_TELEMETRY_CSV}. "
+            "Run: python -m project.synthetic.export_telemetry --customers 100 --days 7 "
+            "--telemetry-output project/data/demo/demo_telemetry.csv"
+        )
+    df = pd.read_csv(_DEMO_TELEMETRY_CSV)
+    df["received_at"] = pd.to_datetime(df["timestamp"], utc=True)
+    df = df.sort_values("received_at", ascending=False).head(limit).reset_index(drop=True)
+    return df[["received_at", "meter_id", "voltage", "current", "active_power"]]
+
+
+def render_live_telemetry():
+    """Show the latest telemetry rows from Postgres or the bundled demo CSV."""
+    theme = st.session_state.get("ui_theme", "dark")
 
     st.markdown(f"### {tr('telemetry_title')}")
 
-    col_btn, col_info = st.columns([1, 5])
+    col_btn, col_demo, col_info = st.columns([1, 1.3, 4])
     with col_btn:
-        refresh = st.button(tr("refresh"), use_container_width=True)
+        refresh = st.button(tr("refresh"), use_container_width=True, disabled=not _PSYCOPG2_AVAILABLE)
+    with col_demo:
+        load_demo = st.button("Load demo CSV", use_container_width=True, key="tele_load_demo")
     with col_info:
-        st.caption(tr("telemetry_refresh_help"))
+        if _PSYCOPG2_AVAILABLE:
+            st.caption(tr("telemetry_refresh_help"))
+        else:
+            st.caption("Postgres driver not installed — using demo CSV fallback.")
 
-    if "live_df" not in st.session_state or refresh:
+    if load_demo:
+        try:
+            st.session_state["live_df"] = _load_demo_telemetry_csv(limit=500)
+            st.session_state["live_ts"] = time.strftime("%H:%M:%S")
+            st.session_state["live_source"] = "demo_csv"
+        except Exception as exc:
+            friendly_error(
+                "Demo CSV load failed",
+                "Re-generate it with: python -m project.synthetic.export_telemetry",
+                detail=exc,
+            )
+            return
+    elif _PSYCOPG2_AVAILABLE and ("live_df" not in st.session_state or refresh):
         try:
             st.session_state["live_df"] = fetch_live_telemetry(limit=100)
             st.session_state["live_ts"] = time.strftime("%H:%M:%S")
+            st.session_state["live_source"] = "postgres"
         except Exception as exc:
-            st.error(f"{tr('telemetry_db_error')}: {exc}\n\n{tr('telemetry_db_help')}")
+            friendly_error(
+                tr("telemetry_db_error"),
+                tr("telemetry_db_help"),
+                detail=exc,
+            )
             return
+    elif not _PSYCOPG2_AVAILABLE and "live_df" not in st.session_state:
+        st.info("Click **Load demo CSV** to preview bundled telemetry without a database.")
+        return
 
     df = st.session_state.get("live_df", pd.DataFrame())
     last_ts = st.session_state.get("live_ts", "-")
+    source_label = st.session_state.get("live_source", "postgres")
+    if source_label == "demo_csv":
+        st.caption("Source: bundled demo CSV (project/data/demo/demo_telemetry.csv)")
 
     if df.empty:
         st.info(tr("telemetry_no_data"))
@@ -3285,7 +3613,11 @@ def main():
             features_df, raw_df, data_meta = load_data("sample", "")
         except Exception as exc2:
             _logger.error("Sample data fallback also failed: %s", exc2, exc_info=True)
-            st.error(f"Kritik hata — örnek veri de yüklenemedi: {exc2}")
+            friendly_error(
+                "Critical error — even sample data could not be loaded",
+                "Check mass_ai_engine.py and that scikit-learn / numpy are installed.",
+                detail=exc2,
+            )
             st.stop()
         data_meta["source"] = "sample"
 
@@ -3330,7 +3662,7 @@ def main():
         render_overview(filtered_df, threshold, raw_df)
 
     with tab2:
-        render_customer_list(filtered_df)
+        render_customer_list(filtered_df, raw_df)
 
     with tab3:
         render_timeseries_comparison(features_df, raw_df)
