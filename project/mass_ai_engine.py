@@ -4,7 +4,7 @@ import hashlib
 import logging
 import os
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -220,6 +220,7 @@ class MassAIEngine:
         self.df_raw = None
         self.df_features = None
         self.df_scored = None
+        self.df_telemetry: pd.DataFrame | None = None
         self.models: dict[str, Any] = {}
         self.results: dict[str, dict[str, Any]] = {}
         self.feature_cols: list[str] = []
@@ -230,6 +231,7 @@ class MassAIEngine:
         self.last_preset_name: str | None = None
         self.last_preset_summary: str | None = None
         self.last_explainability_summary: str | None = None
+        self.last_telemetry_summary: dict[str, Any] | None = None
         # TODO: attach ModelRegistry for joblib-backed versioned persistence
         self.registry = ModelRegistry()
 
@@ -237,11 +239,13 @@ class MassAIEngine:
         self.df_raw = None
         self.df_features = None
         self.df_scored = None
+        self.df_telemetry = None
         self.models = {}
         self.results = {}
         self.feature_cols = []
         self.scaler = None
         self.last_explainability_summary = None
+        self.last_telemetry_summary = None
 
     def log(self, message):
         stamp = datetime.now().strftime("%H:%M:%S")
@@ -263,9 +267,21 @@ class MassAIEngine:
             return "Isolation Forest"
         return "No model yet"
 
-    def generate_synthetic(self, n_customers=2000, n_days=180, callback=None, preset_name: str | None = None):
+    def generate_synthetic(
+        self,
+        n_customers: int = 2000,
+        n_days: int = 180,
+        callback=None,
+        preset_name: str | None = None,
+        emit_telemetry: bool = False,
+        telemetry_start_ts: str | datetime | None = None,
+        telemetry_freq: str = "1h",
+        seed: int | None = None,
+    ):
         preset_name, preset = self._resolve_synthetic_preset(preset_name)
         self.reset_state()
+        if seed is not None:
+            np.random.seed(int(seed))
         self.last_preset_name = preset_name
         self.last_preset_summary = preset["description"]
         self.last_source = f"Synthetic dataset | {preset_name} | {n_customers} customers"
@@ -273,6 +289,17 @@ class MassAIEngine:
         self.log(f"Synthetic preset: {preset_name} - {preset['description']}")
         if callback:
             callback(5, f"Creating {preset_name} profiles")
+
+        telemetry_start_dt: datetime | None = None
+        telemetry_chunks: list[pd.DataFrame] = []
+        if emit_telemetry:
+            if telemetry_start_ts is None:
+                telemetry_start_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(days=n_days)
+            elif isinstance(telemetry_start_ts, datetime):
+                telemetry_start_dt = telemetry_start_ts if telemetry_start_ts.tzinfo else telemetry_start_ts.replace(tzinfo=timezone.utc)
+            else:
+                telemetry_start_dt = pd.to_datetime(telemetry_start_ts, utc=True).to_pydatetime()
+            self.log(f"Telemetry emission enabled: start={telemetry_start_dt.isoformat()} freq={telemetry_freq}")
 
         profile_names, profile_probs = _normalized_weights(preset["profile_weights"])
         region_names, region_probs = _normalized_weights(preset["region_weights"])
@@ -430,6 +457,27 @@ class MassAIEngine:
             tamper_density = round(tamper_event_count / max(n_days / 30, 1), 3)
             premise_density = "dense" if region == "metro" else "clustered" if region in {"coastal", "plateau"} else "dispersed"
 
+            if emit_telemetry and telemetry_start_dt is not None:
+                meter_id = f"METER-{customer_idx + 1:05d}"
+                voltage_arr = np.clip(np.random.normal(230.0, 2.0, len(hours)), 210.0, 250.0)
+                active_power_w = np.maximum(consumption * 1000.0, 0.0)
+                power_factor = 0.95
+                current_arr = active_power_w / (voltage_arr * power_factor + 1e-6)
+                ts_index = pd.date_range(
+                    start=telemetry_start_dt, periods=len(hours), freq=telemetry_freq, tz="UTC"
+                )
+                telemetry_chunks.append(
+                    pd.DataFrame(
+                        {
+                            "meter_id": meter_id,
+                            "timestamp": ts_index,
+                            "voltage": np.round(voltage_arr, 2),
+                            "current": np.round(current_arr, 3),
+                            "active_power": np.round(active_power_w, 1),
+                        }
+                    )
+                )
+
             rows.append(
                 {
                     "customer_id": customer_idx,
@@ -509,7 +557,36 @@ class MassAIEngine:
         self.log(f"Dataset ready: {len(self.df_features)} customers, {len(self.df_features.columns)} columns")
         self.log(f"Labeled fraud records: {(self.df_features['label'] == 1).sum()}")
         self.log(f"Transformers: {self.df_features['transformer_id'].nunique()}, Feeders: {self.df_features['feeder_id'].nunique()}")
+
+        if emit_telemetry and telemetry_chunks:
+            self.df_telemetry = pd.concat(telemetry_chunks, ignore_index=True)
+            self.df_telemetry = self.df_telemetry[
+                ["meter_id", "timestamp", "voltage", "current", "active_power"]
+            ]
+            self.last_telemetry_summary = {
+                "rows": int(len(self.df_telemetry)),
+                "meters": int(self.df_telemetry["meter_id"].nunique()),
+                "start_ts": self.df_telemetry["timestamp"].min().isoformat() if len(self.df_telemetry) else None,
+                "end_ts": self.df_telemetry["timestamp"].max().isoformat() if len(self.df_telemetry) else None,
+                "frequency": telemetry_freq,
+            }
+            self.log(
+                f"Telemetry ready: {self.last_telemetry_summary['rows']} rows across "
+                f"{self.last_telemetry_summary['meters']} meters"
+            )
         return self.df_features
+
+    def to_long_telemetry(self) -> pd.DataFrame:
+        """Return the last emitted long-format telemetry frame.
+
+        The canonical schema matches `docs/CANONICAL_TELEMETRY_SCHEMA.md`:
+        meter_id, timestamp, voltage, current, active_power.
+        """
+        if self.df_telemetry is None:
+            raise RuntimeError(
+                "Telemetry not available. Call generate_synthetic(..., emit_telemetry=True)."
+            )
+        return self.df_telemetry.copy()
 
     def _read_dataset(self, path):
         lower_path = str(path).lower()

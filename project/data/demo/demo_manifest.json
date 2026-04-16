@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-04-16T18:21:20+00:00",
+  "preset": "Turkey Urban",
+  "customers": 100,
+  "days": 7,
+  "seed": 20260416,
+  "start_ts": "2026-04-09T00:00:00Z",
+  "outputs": {
+    "feature_table": "project\\data\\demo\\demo_feature_table.csv",
+    "telemetry": "project\\data\\demo\\demo_telemetry.csv"
+  },
+  "telemetry_summary": {
+    "rows": 16800,
+    "meters": 100,
+    "start_ts": "2026-04-09T00:00:00+00:00",
+    "end_ts": "2026-04-15T23:00:00+00:00",
+    "frequency": "1h"
+  },
+  "known_theft_cases": [
+    {
+      "meter_id": "METER-00005",
+      "customer_id": 4,
+      "theft_type": "night_zeroing",
+      "profile": "mixed_use",
+      "region": "rural"
+    },
+    {
+      "meter_id": "METER-00013",
+      "customer_id": 12,
+      "theft_type": "constant_reduction",
+      "profile": "residential",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00015",
+      "customer_id": 14,
+      "theft_type": "intermittent_bypass",
+      "profile": "residential",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00017",
+      "customer_id": 16,
+      "theft_type": "gradual_decrease",
+      "profile": "commercial",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00030",
+      "customer_id": 29,
+      "theft_type": "gradual_decrease",
+      "profile": "mixed_use",
+      "region": "coastal"
+    },
+    {
+      "meter_id": "METER-00045",
+      "customer_id": 44,
+      "theft_type": "constant_reduction",
+      "profile": "residential",
+      "region": "plateau"
+    },
+    {
+      "meter_id": "METER-00047",
+      "customer_id": 46,
+      "theft_type": "gradual_decrease",
+      "profile": "mixed_use",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00057",
+      "customer_id": 56,
+      "theft_type": "gradual_decrease",
+      "profile": "mixed_use",
+      "region": "plateau"
+    },
+    {
+      "meter_id": "METER-00058",
+      "customer_id": 57,
+      "theft_type": "night_zeroing",
+      "profile": "mixed_use",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00066",
+      "customer_id": 65,
+      "theft_type": "tamper_spikes",
+      "profile": "commercial",
+      "region": "coastal"
+    },
+    {
+      "meter_id": "METER-00076",
+      "customer_id": 75,
+      "theft_type": "random_zeros",
+      "profile": "residential",
+      "region": "coastal"
+    },
+    {
+      "meter_id": "METER-00088",
+      "customer_id": 87,
+      "theft_type": "peak_clipping",
+      "profile": "residential",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00093",
+      "customer_id": 92,
+      "theft_type": "tamper_spikes",
+      "profile": "mixed_use",
+      "region": "rural"
+    },
+    {
+      "meter_id": "METER-00098",
+      "customer_id": 97,
+      "theft_type": "random_zeros",
+      "profile": "residential",
+      "region": "metro"
+    },
+    {
+      "meter_id": "METER-00100",
+      "customer_id": 99,
+      "theft_type": "peak_clipping",
+      "profile": "residential",
+      "region": "plateau"
+    }
+  ]
+}
