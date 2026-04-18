@@ -1,43 +1,28 @@
-# MASS-AI Pilot Checklist
+# MASS-AI Web Pilot Checklist
 
 ## Preflight
-- Install requirements.
+
+- Install requirements with `INSTALL_REQUIREMENTS.bat`.
 - Run `RUN_SMOKE_TESTS.bat`.
-- Confirm the desktop app opens.
-- Confirm the launcher opens.
+- Launch the web app with `START_MASS_AI.bat`.
 
-## Analyst Flow
-1. Open the desktop app.
-2. Select a synthetic preset.
-3. Run a synthetic dataset.
-4. Confirm the `Operations` queue is populated.
-5. Open one case.
-6. Change status to `Escalated`.
-7. Add a note.
-8. Confirm the history timeline shows:
-   - case creation
-   - analysis sync
-   - case update
-   - note entry
+## Web Flow
 
-## Data Ingestion Flow
-1. Load a CSV or Excel file with reordered columns.
-2. Confirm scoring completes.
-3. Confirm missing-label datasets fall back safely.
-4. Confirm the customer detail panel shows `Why flagged`.
+1. Open the dashboard in the browser.
+2. Confirm the app loads without import or dataset errors.
+3. Navigate across the main tabs.
+4. Confirm feature data and charts render.
+5. Open at least one customer detail or drill-down flow.
+6. Confirm the app still supports synthetic demo usage.
 
-## Export Flow
-1. Export results CSV.
-2. Export charts PNG.
-3. Export executive brief HTML.
-4. Export support bundle ZIP.
+## Data Flow
 
-## Persistence Flow
-1. Close the desktop app.
-2. Reopen the desktop app.
-3. Confirm the same case status and notes are still visible.
+1. Confirm processed demo files are readable from `project/data/processed`.
+2. Confirm fallback raw-series generation still works when the raw sample is missing.
+3. Confirm scoring visuals render after data load.
 
-## Packaging Flow
-1. Run `BUILD_DESKTOP_EXE.bat`.
-2. Confirm `project\artifacts\dist\build_manifest.json` exists.
-3. Confirm the built executable launches on Windows.
+## Branch Clarity
+
+1. Confirm `README.md` describes `main` as web-only.
+2. Confirm no desktop screenshots or desktop launch steps remain in `main`.
+3. Confirm `desktop-local` is the only documented path for the old desktop app.

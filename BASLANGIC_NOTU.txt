@@ -1,37 +1,17 @@
-MASS-AI Unified Package
+MASS-AI Web Branch Notu
 =======================
 
-This project can now be used as an international desktop product package.
+Bu branch artik web odakli ana hatti temsil ediyor.
 
-Quick start:
-1. Run INSTALL_REQUIREMENTS.bat first.
-2. Open START_MASS_AI_DESKTOP.bat to launch the desktop app directly.
-3. Open START_MASS_AI.bat if you prefer the unified launcher experience.
+Hizli baslangic:
+1. `INSTALL_REQUIREMENTS.bat` calistir.
+2. `START_MASS_AI.bat` veya `START_MASS_AI_WEB.bat` ile web uygulamasini ac.
+3. `RUN_SMOKE_TESTS.bat` ile temel kontrol yap.
 
-To build a Windows executable:
-- Run BUILD_DESKTOP_EXE.bat.
-- The packaged app will be created under project\old_desktop\artifacts\dist\MASS_AI_Desktop.exe.
+Yapi:
+- `project\web` aktif web uygulamasi
+- `project\core` ortak is mantigi
+- `desktop-local` eski yerel/desktop surumu
 
-To run a quick health check:
-- Run RUN_SMOKE_TESTS.bat.
-
-Main files:
-- MASS_AI_LAUNCHER.py -> Unified launcher
-- START_MASS_AI_DESKTOP.bat -> Direct desktop app entry point
-- START_MASS_AI_WEB.bat -> Direct web dashboard entry point
-- BUILD_DESKTOP_EXE.bat -> Windows executable packaging
-- RUN_SMOKE_TESTS.bat -> Basic smoke tests
-- project\old_desktop\mass_ai_desktop.py -> Main desktop application
-
-Organized folders:
-- project\core -> Shared engine and helpers
-- project\old_desktop -> Old desktop version
-- project\new_web -> New web dashboard version
-- project\archive\legacy_pipeline -> Older research and pipeline scripts
-- project\tests -> Unit tests
-- project\data\processed -> CSV outputs and sample processed data
-- project\data\maps -> Map sample files
-- project\old_desktop\artifacts -> Desktop build outputs and logs
-- project\old_desktop\packaging -> PyInstaller spec and packaging assets
-- business_docs\project_research -> Paper and presentation files
-- docs\PROJECT_LAYOUT.md -> Clean folder map
+Not:
+Eski desktop ekran goruntuleri ve desktop calistirma dosyalari `main` branch'inden cikarildi.

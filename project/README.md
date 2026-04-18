@@ -1,38 +1,36 @@
 # Project Layout
 
-This folder is organized around the two MASS-AI app versions plus a shared core.
+This branch is organized for the web path only.
 
 ## Main Folders
 
 - `core/`
-  Shared engine, domain logic, metadata, preferences, persistence, and support helpers.
-- `old_desktop/`
-  First version of the app.
-  Tkinter desktop UI, desktop-only UI kit, packaging files, and desktop requirements.
-- `new_web/`
-  Newer version of the app.
-  Streamlit dashboard and web-oriented requirements.
+  Shared domain, engine, metadata, persistence, and helper modules.
+- `web/`
+  Current Streamlit web application and web-specific dependency file.
 - `data/`
-  Shared datasets used by both versions.
+  Demo datasets and processed CSV assets used by the app.
 - `tests/`
-  Unit tests for the shared core.
+  Unit tests for shared runtime behavior.
 - `archive/`
-  Older research code removed from the main runtime layout.
+  Older research and experiment code removed from the active runtime path.
 
 ## Entry Points
 
-- Old desktop:
-  `START_MASS_AI_DESKTOP.bat`
-- Launcher:
+- Primary launch:
   `START_MASS_AI.bat`
-- New web directly:
+- Direct web launch:
   `START_MASS_AI_WEB.bat`
+- Smoke checks:
+  `RUN_SMOKE_TESTS.bat`
 
 ## Install
 
-- Both versions:
+- Web runtime:
   `python -m pip install -r project/requirements.txt`
-- Desktop only:
-  `python -m pip install -r project/old_desktop/requirements.txt`
-- Web only:
-  `python -m pip install -r project/new_web/requirements.txt`
+- Direct web requirements:
+  `python -m pip install -r project/web/requirements.txt`
+
+## Desktop History
+
+The old local desktop app is no longer part of `main`. Use the `desktop-local` branch if you need that version.

@@ -52,6 +52,6 @@
   - selected case rationale
 
 ## Next Cleanup
-- Split tab controllers out of `mass_ai_desktop.py`
+- Split dashboard responsibilities into clearer web-facing modules
 - Remove remaining dead helper code now shadowed by extracted modules
-- Add preset-specific screenshots or sample CSV fixtures for demo QA
+- Add approved web mockups or sample CSV fixtures for demo QA

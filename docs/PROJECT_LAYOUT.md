@@ -1,39 +1,37 @@
 # MASS-AI Project Layout
 
-This workspace is organized around a shared core plus two app versions: the old desktop version and the new web version.
+`main` is organized around a web-first product story.
 
 ## Top Level
 
-- `MASS_AI_LAUNCHER.py`: unified launcher
-- `START_MASS_AI.bat`: launcher entry point
-- `START_MASS_AI_DESKTOP.bat`: direct desktop entry point
-- `BUILD_DESKTOP_EXE.bat`: packaging script
-- `RUN_SMOKE_TESTS.bat`: compile + unit test check
-- `docs/`: product and project notes
-- `images/`: screenshots and visual assets
-- `business_docs/`: business-facing files and archived papers
+- `index.html`: public landing page
+- `styles.css`: landing page styles
+- `script.js`: landing page behavior
+- `START_MASS_AI.bat`: primary web launch
+- `START_MASS_AI_WEB.bat`: direct web launch alias
+- `INSTALL_REQUIREMENTS.bat`: install the active web dependency set
+- `RUN_SMOKE_TESTS.bat`: compile plus unit checks
+- `docs/`: product and rollout notes
+- `images/`: approved web visual intake area
 
 ## Project Folder
 
-- `project/core/`: shared engine, metadata, persistence, and helper modules
-- `project/old_desktop/`: first Tkinter desktop version
-- `project/new_web/`: newer Streamlit web version
-- `project/archive/`: archived research code outside the main app flow
+- `project/core/`: shared engine and helper modules
+- `project/web/`: current Streamlit web runtime
+- `project/data/`: demo and processed datasets
+- `project/tests/`: unit tests
+- `project/archive/`: archived research code
 
-## Organized Subfolders
+## Branch Contract
 
-- `project/tests/`: unit and regression tests
-- `project/data/processed/`: processed CSV outputs and demo datasets
-- `project/data/maps/`: map-specific sample data
-- `project/old_desktop/artifacts/`: desktop build outputs and logs
-- `project/old_desktop/packaging/`: PyInstaller spec and packaging helpers
-- `project/archive/legacy_pipeline/`: older research and experiment pipeline scripts
+- `main`: web-facing branch
+- `desktop-local`: old local desktop version
 
 ## Quick Usage
 
-- Desktop app: `START_MASS_AI_DESKTOP.bat`
-- Web dashboard: `START_MASS_AI_WEB.bat`
-- Launcher: `START_MASS_AI.bat`
-- Dashboard: launcher button or `python -m streamlit run project/new_web/dashboard/app.py`
-- Smoke tests: `RUN_SMOKE_TESTS.bat`
-- Legacy experiments: `python project/archive/legacy_pipeline/run_pipeline.py --quick`
+- Install:
+  `INSTALL_REQUIREMENTS.bat`
+- Run web app:
+  `START_MASS_AI.bat`
+- Run smoke checks:
+  `RUN_SMOKE_TESTS.bat`
