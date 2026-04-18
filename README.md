@@ -26,6 +26,14 @@
 
 ---
 
+## Branch Guide
+
+- `main` is the future-facing web direction for MASS AI and the default branch on GitHub.
+- `desktop-local` preserves the current local/desktop application line for users who want the existing desktop workflow.
+- If you want the desktop experience after cloning, run `git checkout desktop-local`.
+
+---
+
 ## Screenshots
 
 | Main Workspace | Overview & KPIs |
