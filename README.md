@@ -259,6 +259,13 @@ The built-in data engine generates realistic Turkish smart meter data with no ex
 
 ## Project Structure
 
+Current runtime layout:
+
+- `project/core` for shared modules
+- `project/old_desktop` for the first Tkinter desktop version
+- `project/new_web` for the newer Streamlit version
+- `project/archive` for archived research code
+
 ```
 MASS_AI_UNIFIED_APP/
 ├── MASS_AI_LAUNCHER.py          # Unified launcher (Tkinter)
@@ -304,13 +311,14 @@ cd MASS-AI-Project
 INSTALL_REQUIREMENTS.bat
 
 # 2 — Install (manual)
-pip install -r project/requirements-full.txt   # full stack
-pip install -r project/requirements-desktop.txt  # desktop only
+pip install -r project/requirements.txt                # both versions
+pip install -r project/new_web/requirements.txt       # web only
+pip install -r project/old_desktop/requirements.txt   # desktop only
 
 # 3 — Launch
 START_MASS_AI.bat                              # unified launcher
-streamlit run project/dashboard/app.py         # web dashboard only
-python project/legacy_pipeline/run_pipeline.py --quick  # research pipeline
+START_MASS_AI_WEB.bat                          # web dashboard only
+python project/archive/legacy_pipeline/run_pipeline.py --quick  # archived research pipeline
 ```
 
 ---

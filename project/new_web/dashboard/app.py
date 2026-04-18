@@ -26,8 +26,13 @@ from plotly.subplots import make_subplots
 import time
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+DASHBOARD_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = DASHBOARD_DIR.parent.parent
+CORE_DIR = PROJECT_DIR / "core"
+if str(CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(CORE_DIR))
 
 # ========== SAYFA AYARLARI ==========
 st.set_page_config(
@@ -90,12 +95,61 @@ st.markdown("""
 
 
 # ========== VERI YUKLEME ==========
+def build_fallback_raw_data(features_df):
+    periods = 96 * 3
+    timestamps = pd.date_range("2026-01-01", periods=periods, freq="15min")
+    series_frames = []
+
+    for row in features_df.itertuples(index=False):
+        customer_id = getattr(row, "customer_id")
+        mean_value = float(getattr(row, "mean_consumption", 1.0) or 1.0)
+        std_value = float(getattr(row, "std_consumption", 0.2) or 0.2)
+        theft_type = str(getattr(row, "theft_type", "none") or "none")
+        label = int(getattr(row, "label", 0) or 0)
+        rng = np.random.default_rng(int(customer_id) + 2026)
+
+        signal = mean_value
+        signal += np.sin(np.linspace(0, 6 * np.pi, periods)) * max(std_value * 0.6, 0.04)
+        signal += rng.normal(0, max(std_value * 0.18, 0.03), periods)
+        signal = np.clip(signal, 0, None)
+
+        if label == 1:
+            if theft_type == "night_zeroing":
+                signal[::8] = 0
+            elif theft_type == "random_zeros":
+                zero_mask = rng.choice([0, 1], size=periods, p=[0.9, 0.1]).astype(bool)
+                signal[zero_mask] = 0
+            elif theft_type == "constant_reduction":
+                signal *= 0.45
+            elif theft_type == "gradual_decrease":
+                signal *= np.linspace(1.0, 0.55, periods)
+            elif theft_type == "peak_clipping":
+                clip_level = np.quantile(signal, 0.72)
+                signal = np.minimum(signal, clip_level)
+
+        series_frames.append(
+            pd.DataFrame(
+                {
+                    "customer_id": customer_id,
+                    "timestamp": timestamps,
+                    "consumption_kw": signal,
+                }
+            )
+        )
+
+    return pd.concat(series_frames, ignore_index=True)
+
+
 @st.cache_data
 def load_data():
-    base = os.path.join(os.path.dirname(__file__), '..', 'data', 'processed')
-    features = pd.read_csv(os.path.join(base, 'features.csv'))
-    raw = pd.read_csv(os.path.join(base, 'raw_consumption_sample.csv'))
-    raw['timestamp'] = pd.to_datetime(raw['timestamp'])
+    base = PROJECT_DIR / 'data' / 'processed'
+    features = pd.read_csv(base / 'features.csv')
+    raw_path = base / 'raw_consumption_sample.csv'
+    if raw_path.exists():
+        raw = pd.read_csv(raw_path)
+        raw['timestamp'] = pd.to_datetime(raw['timestamp'])
+    else:
+        raw = build_fallback_raw_data(features)
     return features, raw
 
 

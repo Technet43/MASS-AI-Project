@@ -1,9 +1,4 @@
-# MASS-AI Desktop Dependencies
-# For advanced modules (1D-CNN, GAN, etc.), use: pip install -r requirements-full.txt
-numpy>=1.24
-pandas>=2.0
-scikit-learn>=1.3
-xgboost>=2.0
-matplotlib>=3.7
-openpyxl>=3.1
-tkintermapview>=1.29
+# MASS-AI combined dependencies
+# Installs both the old desktop app and the new web dashboard stacks.
+-r old_desktop/requirements.txt
+-r new_web/requirements.txt

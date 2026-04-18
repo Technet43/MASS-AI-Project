@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-if str(PROJECT_DIR) not in sys.path:
-    sys.path.insert(0, str(PROJECT_DIR))
+CORE_DIR = PROJECT_DIR / "core"
+if str(CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(CORE_DIR))
 
 from mass_ai_engine import MassAIEngine
 from mass_ai_domain import RISK_LABELS

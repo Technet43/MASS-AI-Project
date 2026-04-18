@@ -7,8 +7,12 @@ from tkinter import filedialog, messagebox, ttk
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR / "project"
-if str(PROJECT_DIR) not in sys.path:
-    sys.path.insert(0, str(PROJECT_DIR))
+CORE_DIR = PROJECT_DIR / "core"
+DESKTOP_DIR = PROJECT_DIR / "old_desktop"
+WEB_DIR = PROJECT_DIR / "new_web"
+for path in (DESKTOP_DIR, CORE_DIR):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from ui_kit import (
     DEFAULT_THEME_NAME,
@@ -54,18 +58,18 @@ class LauncherApp:
             messagebox.showerror("MASS-AI", f"The command could not be launched:\n{exc}")
 
     def open_desktop(self):
-        target = PROJECT_DIR / "mass_ai_desktop.py"
+        target = DESKTOP_DIR / "mass_ai_desktop.py"
         if not target.exists():
             messagebox.showerror("MASS-AI", "mass_ai_desktop.py was not found.")
             return
-        self.run_command([sys.executable, str(target)], cwd=PROJECT_DIR)
+        self.run_command([sys.executable, str(target)], cwd=DESKTOP_DIR)
 
     def open_dashboard(self):
-        target = PROJECT_DIR / "dashboard" / "app.py"
+        target = WEB_DIR / "dashboard" / "app.py"
         if not target.exists():
-            messagebox.showerror("MASS-AI", "dashboard/app.py was not found.")
+            messagebox.showerror("MASS-AI", "new_web/dashboard/app.py was not found.")
             return
-        self.run_command([sys.executable, "-m", "streamlit", "run", str(target)], cwd=PROJECT_DIR)
+        self.run_command([sys.executable, "-m", "streamlit", "run", str(target)], cwd=WEB_DIR)
 
     def install_requirements(self):
         req = PROJECT_DIR / "requirements.txt"
