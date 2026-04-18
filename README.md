@@ -321,7 +321,7 @@ Turkey's smart meter modernization effort will generate massive time-series data
 ## Author
 
 **Ömer Burak Koçak**  
-Electrical-Electronics Engineering · Marmara University · Class of 2026  
+Electrical-Electronics Engineering · Marmara University · Graduation 2028
 [kocakomerburak075@gmail.com](mailto:kocakomerburak075@gmail.com)
 
 ---
