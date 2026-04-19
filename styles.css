@@ -545,6 +545,38 @@ button {
     text-align: center;
 }
 
+.nav-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 38px;
+    height: 38px;
+    padding: 6px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: background 180ms ease;
+}
+
+.nav-toggle:hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.nav-toggle span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: var(--ink);
+    border-radius: 2px;
+    transition: transform 240ms ease, opacity 240ms ease;
+}
+
+.nav-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.nav-toggle.open span:nth-child(2) { opacity: 0; }
+.nav-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
 .lightbox {
     width: min(960px, calc(100% - 32px));
     border: 0;
@@ -559,15 +591,42 @@ button {
     backdrop-filter: blur(8px);
 }
 
+.lightbox-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lightbox-counter {
+    flex: 1;
+    text-align: center;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.lightbox-nav,
 .lightbox-close {
-    margin-left: auto;
     display: inline-flex;
-    padding: 10px 14px;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 12px;
     border-radius: 12px;
     border: 0;
     background: rgba(255, 255, 255, 0.88);
     color: var(--ink);
     cursor: pointer;
+    font-size: 1rem;
+    font-weight: 700;
+    transition: background 180ms ease, transform 180ms ease;
+}
+
+.lightbox-nav:hover,
+.lightbox-close:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(1.05);
 }
 
 .lightbox img {
@@ -610,13 +669,34 @@ button {
         padding-top: 14px;
     }
 
+    .nav-toggle {
+        display: flex;
+    }
+
     .site-header {
         border-radius: 28px;
-        align-items: flex-start;
+        flex-wrap: wrap;
+        align-items: center;
     }
 
     .site-nav {
-        justify-content: flex-start;
+        display: none;
+        width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(42, 88, 145, 0.1);
+        margin-top: 10px;
+    }
+
+    .site-nav.open {
+        display: flex;
+    }
+
+    .site-nav a {
+        padding: 6px 0;
+        font-size: 1rem;
     }
 
     .hero h1 {
