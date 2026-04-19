@@ -1,9 +1,10 @@
 const revealed = document.querySelectorAll("[data-reveal]");
 const themeToggle = document.getElementById("theme-toggle");
+const THEME_KEY = "mass-ai-theme-v2";
 
 const setTheme = (theme) => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("mass-ai-theme", theme);
+    localStorage.setItem(THEME_KEY, theme);
 
     if (themeToggle) {
         const nextMode = theme === "light" ? "Dark Mode" : "Light Mode";
