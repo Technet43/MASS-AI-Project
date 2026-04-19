@@ -5,9 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta
         name="description"
-        content="MASS-AI is a web-first pilot platform for smart meter anomaly detection, analyst prioritization, and operational risk intelligence."
+        content="MASS-AI is an AI-powered electricity theft detection dashboard for smart meter analytics, anomaly monitoring, and pilot-ready utility intelligence."
     >
-    <title>MASS-AI | Web-First Smart Meter Risk Intelligence</title>
+    <title>MASS-AI | Electricity Theft Detection Dashboard</title>
+    <script>
+        (() => {
+            const storedTheme = localStorage.getItem("mass-ai-theme");
+            document.documentElement.dataset.theme = storedTheme || "light";
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
@@ -21,183 +27,352 @@
                 <span>MASS-AI</span>
             </a>
             <nav class="site-nav" aria-label="Primary">
-                <a href="#platform">Platform</a>
-                <a href="#web-app">Web App</a>
-                <a href="#assets">Assets</a>
-                <a href="#faq">FAQ</a>
+                <a href="#screenshots">Screenshots</a>
+                <a href="#features">Features</a>
+                <a href="#models">Models</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#start">Quick Start</a>
                 <a href="https://github.com/Technet43/MASS-AI-Project" target="_blank" rel="noreferrer">GitHub</a>
             </nav>
+            <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Light Mode</button>
         </header>
 
         <main id="top">
             <section class="hero" data-reveal>
                 <div class="hero-copy">
-                    <span class="eyebrow">Web-First Pilot Platform</span>
-                    <h1>Smart meter risk intelligence shaped for the web.</h1>
+                    <span class="eyebrow">MASS AI Project</span>
+                    <h1>AI-powered electricity theft detection for smart meter infrastructure.</h1>
                     <p class="hero-text">
-                        MASS-AI on `main` now tells a single story: a landing experience at the repo root and a dedicated web app
-                        under `project/web/`. The old desktop line has been moved out of this branch and remains available only in
-                        `desktop-local`.
+                        MASS-AI is a production-ready machine learning platform that detects suspicious consumption behavior,
+                        visualizes anomalies across Turkey, compares normal vs theft-like time-series patterns, and presents
+                        analyst-ready model insights through a five-tab web dashboard.
                     </p>
+                    <div class="hero-note">
+                        <strong>Demo note:</strong> The current website showcases a bundled <strong>2,000-customer synthetic snapshot</strong>.
+                        The underlying engine can generate new synthetic scenarios programmatically and can also be connected to
+                        <strong>external CSV / Excel data</strong> when needed.
+                    </div>
                     <div class="hero-actions">
-                        <a class="button button-primary" href="#web-app">Explore the web app</a>
-                        <a class="button button-secondary" href="https://github.com/Technet43/MASS-AI-Project/tree/main/project/web" target="_blank" rel="noreferrer">Open web folder</a>
+                        <a class="button button-primary" href="#screenshots">See Screenshots</a>
+                        <a class="button button-secondary" href="https://github.com/Technet43/MASS-AI-Project" target="_blank" rel="noreferrer">View Repository</a>
                     </div>
                     <div class="hero-meta">
-                        <span>Landing + web app</span>
-                        <span>Streamlit runtime</span>
-                        <span>Desktop-free main branch</span>
+                        <span>2,000 customers</span>
+                        <span>180 days</span>
+                        <span>5-tab Streamlit UI</span>
                     </div>
                 </div>
 
-                <div class="hero-visual" aria-hidden="true">
-                    <div class="signal-card signal-card-top">
-                        <strong>Live pilot story</strong>
-                        <span>Web-native positioning for demos, docs, and future rollout.</span>
+                <div class="hero-visual">
+                    <figure class="hero-shot glass-card">
+                        <img src="images/web/overview-map.png" alt="MASS-AI overview dashboard with anomaly map and KPI cards">
+                    </figure>
+                    <div class="hero-chip hero-chip-top">
+                        <strong>28%+ theft pressure</strong>
+                        <span>Built around Turkey's smart meter modernization story and pilot analytics needs.</span>
                     </div>
-                    <div class="mock-window">
-                        <div class="window-chrome">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                        <div class="mock-grid">
-                            <article class="metric-panel">
-                                <h2>Risk Queue</h2>
-                                <strong>257</strong>
-                                <p>accounts above operational threshold</p>
-                            </article>
-                            <article class="metric-panel accent">
-                                <h2>Priority Coverage</h2>
-                                <strong>84%</strong>
-                                <p>watchlist confidence on current batch</p>
-                            </article>
-                            <article class="wide-panel chart-panel">
-                                <div class="chart-bars">
-                                    <span style="--h: 78%"></span>
-                                    <span style="--h: 45%"></span>
-                                    <span style="--h: 88%"></span>
-                                    <span style="--h: 61%"></span>
-                                    <span style="--h: 93%"></span>
-                                    <span style="--h: 54%"></span>
-                                </div>
-                                <p>Batch scoring, prioritization, and review signals presented in a web-friendly shell.</p>
-                            </article>
-                            <article class="wide-panel timeline-panel">
-                                <div class="timeline-line"></div>
-                                <div class="timeline-copy">
-                                    <span>Ingest</span>
-                                    <span>Score</span>
-                                    <span>Prioritize</span>
-                                    <span>Investigate</span>
-                                </div>
-                            </article>
-                        </div>
+                    <div class="hero-chip hero-chip-bottom">
+                        <strong>Analyst workflow</strong>
+                        <span>Overview, comparison, model review, customer detail, and live simulation in one product flow.</span>
                     </div>
                 </div>
             </section>
 
-            <section class="section" id="platform" data-reveal>
+            <section class="section note-section" data-reveal>
+                <article class="note-card glass-card">
+                    <div class="note-copy">
+                        <span class="eyebrow">Demo Data Note</span>
+                        <h2>This website currently runs on a packaged synthetic demo dataset.</h2>
+                        <p>
+                            The current web build ships with a bundled <strong>2,000-customer synthetic dataset</strong> so the full dashboard
+                            can be reviewed immediately without using live customer records. MASS-AI also includes programmatic synthetic data
+                            generation logic for creating new scenarios, and the platform can be connected to <strong>external CSV / Excel datasets</strong>
+                            instead of the bundled demo files.
+                        </p>
+                    </div>
+                    <div class="note-points">
+                        <div class="note-point">
+                            <strong>Current web demo</strong>
+                            <span>Preloaded 2,000-customer synthetic feature snapshot for stable walkthroughs, presentations, and company-facing demos.</span>
+                        </div>
+                        <div class="note-point">
+                            <strong>Synthetic generation engine</strong>
+                            <span>The project contains reusable functions for generating new synthetic scenarios, regional mixes, and theft-pattern variations.</span>
+                        </div>
+                        <div class="note-point">
+                            <strong>External data ingestion</strong>
+                            <span>The same platform can be adapted to run on imported CSV / Excel data instead of the packaged synthetic sample files.</span>
+                        </div>
+                    </div>
+                </article>
+            </section>
+
+            <section class="section" id="screenshots" data-reveal>
                 <div class="section-copy">
-                    <span class="eyebrow">Platform Shape</span>
-                    <h2>One branch, one story.</h2>
+                    <span class="eyebrow">Screenshots</span>
+                    <h2>The actual dashboard, shown directly.</h2>
                     <p>
-                        `main` is now focused on the web roadmap. The repo root acts as the public-facing landing layer, while the actual
-                        application code lives in a dedicated web area. Desktop assets, desktop launchers, and desktop screenshots no longer
-                        define this branch.
+                        The website now mirrors the README showcase: real product screens, clear sectioning, and a product story built from what the app already does today.
                     </p>
+                </div>
+
+                <div class="screenshot-grid">
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/overview-map.png" alt="Overview page with KPI cards and anomaly map">
+                        <div class="screenshot-copy">
+                            <h3>Main Workspace</h3>
+                            <p>KPI cards, profile filters, theft threshold slider, and Turkey-wide anomaly map.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/risk-distribution.png" alt="Risk distribution charts">
+                        <div class="screenshot-copy">
+                            <h3>Risk Distribution</h3>
+                            <p>Risk-level mix and theft probability distribution across customer segments.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/timeseries-comparison.png" alt="Time-series comparison page">
+                        <div class="screenshot-copy">
+                            <h3>Time-Series Comparison</h3>
+                            <p>Normal vs theft-like consumption patterns over configurable windows.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/statistics-patterns.png" alt="Statistics comparison and theft pattern gallery">
+                        <div class="screenshot-copy">
+                            <h3>Statistics & Pattern Library</h3>
+                            <p>Structured metrics plus visual examples of common theft scenarios.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/model-performance-main.png" alt="Model performance charts">
+                        <div class="screenshot-copy">
+                            <h3>Model Performance</h3>
+                            <p>ROC-AUC, F1, PR curves, and side-by-side model evaluation.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/model-confusion-importance.png" alt="Confusion matrices and feature importance">
+                        <div class="screenshot-copy">
+                            <h3>Feature Importance & Confusion Matrices</h3>
+                            <p>Evidence for why a model flags accounts and where it still misses.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/model-comparison-table.png" alt="Model comparison table and detection success chart">
+                        <div class="screenshot-copy">
+                            <h3>Detection Success by Theft Type</h3>
+                            <p>Model comparison table plus success rate by fraud scenario.</p>
+                        </div>
+                    </article>
+                    <article class="screenshot-card glass-card">
+                        <img src="images/web/customer-detail.png" alt="Customer detail view">
+                        <div class="screenshot-copy">
+                            <h3>Customer Detail</h3>
+                            <p>Single-account inspection with risk label, theft probability, and time-series evidence.</p>
+                        </div>
+                    </article>
+                </div>
+
+                <article class="featured-shot glass-card">
+                    <img src="images/web/live-simulation.png" alt="Live simulation mode">
+                    <div class="featured-copy">
+                        <span class="eyebrow">Live Simulation</span>
+                        <h3>Streaming-style demo mode for pilot storytelling.</h3>
+                        <p>Adjust refresh interval, customer count, and preview length to simulate live anomaly monitoring during demos or jury presentations.</p>
+                    </div>
+                </article>
+            </section>
+
+            <section class="section" id="features" data-reveal>
+                <div class="section-copy">
+                    <span class="eyebrow">Key Features</span>
+                    <h2>Designed like a product, not just an experiment.</h2>
+                    <p>MASS-AI combines anomaly detection, explainability, customer review, and regional analytics into one web-first utility dashboard.</p>
                 </div>
 
                 <div class="feature-grid">
                     <article class="feature-card">
                         <span class="feature-tag">01</span>
-                        <h3>Landing at the root</h3>
-                        <p>The root stays presentation-friendly for GitHub visitors, contest reviewers, and future pilot partners.</p>
+                        <h3>Multi-model detection</h3>
+                        <p>Random Forest, Isolation Forest, XGBoost, Gradient Boosting, and LSTM-based research paths support the broader detection story.</p>
                     </article>
                     <article class="feature-card">
                         <span class="feature-tag">02</span>
-                        <h3>Dedicated web app folder</h3>
-                        <p>The real app path is isolated in `project/web/`, making future frontend and backend changes easier to reason about.</p>
+                        <h3>Regional monitoring</h3>
+                        <p>Suspicious customers are visualized geographically across Turkey with profile-aware filtering and theft thresholds.</p>
                     </article>
                     <article class="feature-card">
                         <span class="feature-tag">03</span>
-                        <h3>Desktop history isolated</h3>
-                        <p>The old desktop line still exists, but only in `desktop-local` where it belongs.</p>
+                        <h3>Time-series comparison</h3>
+                        <p>Normal versus theft-like behavior is shown directly, which makes suspicious patterns easy to explain visually.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">04</span>
+                        <h3>Customer drill-down</h3>
+                        <p>Inspect one account at a time with profile context, anomaly score, theft type, and behavioral evidence.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">05</span>
+                        <h3>Interactive evaluation layer</h3>
+                        <p>ROC, PR, confusion matrices, feature importance, and model comparison are built into the dashboard itself.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">06</span>
+                        <h3>Synthetic scenario engine</h3>
+                        <p>2,000 customers over 180 days at 15-minute resolution with regional presets and multiple theft scenarios.</p>
                     </article>
                 </div>
             </section>
 
-            <section class="section" id="web-app" data-reveal>
+            <section class="section" id="models" data-reveal>
                 <div class="section-copy">
-                    <span class="eyebrow">Current App Area</span>
-                    <h2>The web runtime is now the center of gravity.</h2>
-                    <p>
-                        The active runtime remains a Streamlit dashboard while the repo structure and docs are now aligned around a future
-                        web-first direction. Shared scoring logic stays in `project/core/`; UI execution starts from `project/web/`.
-                    </p>
+                    <span class="eyebrow">Model Performance</span>
+                    <h2>Strong supervised scoring backed by anomaly-first monitoring.</h2>
+                    <p>The current dashboard prominently compares Random Forest and Isolation Forest, while the wider project stack includes XGBoost and LSTM-based experimentation.</p>
                 </div>
 
-                <div class="stack-layout">
-                    <article class="stack-card">
-                        <h3>Public entry</h3>
-                        <p>Root landing, branch guide, and lightweight onboarding for anyone who lands on the repository.</p>
+                <div class="table-shell glass-card">
+                    <table class="info-table">
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>ROC-AUC</th>
+                                <th>F1</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Random Forest</td>
+                                <td>0.9471</td>
+                                <td>0.8704</td>
+                                <td>Supervised</td>
+                            </tr>
+                            <tr>
+                                <td>XGBoost</td>
+                                <td>0.9373</td>
+                                <td>0.8468</td>
+                                <td>Supervised</td>
+                            </tr>
+                            <tr>
+                                <td>Isolation Forest</td>
+                                <td>0.8208</td>
+                                <td>0.2609</td>
+                                <td>Unsupervised</td>
+                            </tr>
+                            <tr>
+                                <td>LSTM Autoencoder</td>
+                                <td>0.7482*</td>
+                                <td>0.5600*</td>
+                                <td>Deep Learning</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="table-note">Current web visuals directly show Random Forest and Isolation Forest evaluation views, with additional research models supporting the wider project narrative.</p>
+                </div>
+
+                <div class="detail-grid">
+                    <article class="detail-card glass-card">
+                        <h3>Isolation Forest</h3>
+                        <p>Label-free anomaly detection for cold-start deployments and initial suspicious behavior screening.</p>
                     </article>
-                    <article class="stack-card">
-                        <h3>App runtime</h3>
-                        <p>Streamlit dashboard in `project/web/dashboard/app.py` backed by shared engine code and demo datasets.</p>
+                    <article class="detail-card glass-card">
+                        <h3>Random Forest</h3>
+                        <p>The strongest visible scorer in the current dashboard, balancing detection strength and analyst-friendly interpretability.</p>
                     </article>
-                    <article class="stack-card">
-                        <h3>Next visual pass</h3>
-                        <p>Approved web mockups will replace the temporary abstract visuals used on this landing page.</p>
+                    <article class="detail-card glass-card">
+                        <h3>XGBoost + LSTM Path</h3>
+                        <p>Additional supervised accuracy and time-series depth for the broader project stack beyond the dashboard's main comparison view.</p>
                     </article>
                 </div>
             </section>
 
-            <section class="section" id="assets" data-reveal>
+            <section class="section" id="architecture" data-reveal>
                 <div class="section-copy">
-                    <span class="eyebrow">Asset Intake</span>
-                    <h2>Ready for the real web visuals.</h2>
-                    <p>
-                        Old desktop screenshots were intentionally removed from `main`. This branch is prepared for a clean asset drop once
-                        approved mockups or current web screens are available.
-                    </p>
+                    <span class="eyebrow">Architecture</span>
+                    <h2>From smart meter data to analyst action.</h2>
+                    <p>The current demo dataset is synthetic by design, but the ingestion layer is not limited to packaged sample data.</p>
                 </div>
 
-                <div class="asset-board">
-                    <article class="asset-card">
-                        <h3>Hero slot</h3>
-                        <p>1 wide visual that can carry the main product promise above the fold.</p>
+                <div class="architecture-shell glass-card">
+<pre class="code-block"><code>Smart Meter Data (raw CSV or processed features)
+        |
+        v
+Feature Engineering  ->  20+ features
+  Statistical: mean, std, skewness, kurtosis
+  Temporal:    night/day ratio, peak hour, weekday vs weekend
+  Anomaly:     zero %, sudden change ratio, trend slope
+        |
+        v
+Model Layer
+  Isolation Forest
+  Random Forest
+  XGBoost
+  Gradient Boosting
+  LSTM Autoencoder
+        |
+        v
+Risk Score + Theft Pattern Classification
+        |
+        v
+Web Dashboard
+  - Overview
+  - Time-Series Comparison
+  - Model Performance
+  - Customer Detail
+  - Live Simulation</code></pre>
+                </div>
+
+                <div class="dataset-grid">
+                    <article class="dataset-card glass-card">
+                        <h3>Synthetic Dataset</h3>
+                        <table class="info-table compact">
+                            <tbody>
+                                <tr><td>Customers</td><td>2,000</td></tr>
+                                <tr><td>Duration</td><td>180 days</td></tr>
+                                <tr><td>Interval</td><td>15 minutes</td></tr>
+                                <tr><td>Theft Rate</td><td>12%</td></tr>
+                                <tr><td>Profiles</td><td>Residential, Commercial, Industrial</td></tr>
+                                <tr><td>Presets</td><td>Metro, Coastal, Plateau, Rural</td></tr>
+                            </tbody>
+                        </table>
                     </article>
-                    <article class="asset-card">
-                        <h3>Support gallery</h3>
-                        <p>3 to 6 additional web screens showing queue, scoring, monitoring, or investigation views.</p>
-                    </article>
-                    <article class="asset-card">
-                        <h3>Intake location</h3>
-                        <p>Use `images/README.md` as the drop contract for filenames, captions, and placement.</p>
+                    <article class="dataset-card glass-card">
+                        <h3>Example Theft Patterns</h3>
+                        <table class="info-table compact">
+                            <tbody>
+                                <tr><td><code>constant_reduction</code></td><td>Meter tampering</td></tr>
+                                <tr><td><code>night_zeroing</code></td><td>Cable bypass</td></tr>
+                                <tr><td><code>random_zeros</code></td><td>Intermittent bypass</td></tr>
+                                <tr><td><code>gradual_decrease</code></td><td>Progressive theft</td></tr>
+                                <tr><td><code>peak_clipping</code></td><td>Current limiter device</td></tr>
+                            </tbody>
+                        </table>
                     </article>
                 </div>
             </section>
 
-            <section class="section faq-section" id="faq" data-reveal>
+            <section class="section" id="start" data-reveal>
                 <div class="section-copy">
-                    <span class="eyebrow">FAQ</span>
-                    <h2>What changed on `main`?</h2>
+                    <span class="eyebrow">Quick Start</span>
+                    <h2>Run the current web branch in a few steps.</h2>
                 </div>
 
-                <div class="faq-grid">
-                    <article class="faq-item">
-                        <h3>Where did the desktop version go?</h3>
-                        <p>It was intentionally removed from `main` and preserved in the `desktop-local` branch.</p>
-                    </article>
-                    <article class="faq-item">
-                        <h3>Why are there no old screenshots anymore?</h3>
-                        <p>This branch should not present desktop visuals as if they were the future web product. The landing now waits for approved web assets instead.</p>
-                    </article>
-                    <article class="faq-item">
-                        <h3>How do I launch the current web app?</h3>
-                        <p>Run `START_MASS_AI.bat` or `START_MASS_AI_WEB.bat`, both of which now open the web runtime.</p>
-                    </article>
+                <div class="architecture-shell glass-card">
+<pre class="code-block"><code># 1 — Clone
+git clone https://github.com/Technet43/MASS-AI-Project.git
+cd MASS-AI-Project
+
+# 2 — Install
+INSTALL_REQUIREMENTS.bat
+
+# 3 — Launch
+START_MASS_AI.bat
+
+# Direct web launch
+streamlit run project/web/dashboard/app.py</code></pre>
                 </div>
             </section>
         </main>

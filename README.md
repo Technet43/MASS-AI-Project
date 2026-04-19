@@ -26,6 +26,17 @@
 
 ---
 
+## Demo Data Note
+
+The current web demo ships with a bundled **2,000-customer synthetic dataset** so the full dashboard can be reviewed immediately without exposing live customer records.
+
+- The current website is a **packaged synthetic demo snapshot** intended for stable walkthroughs, presentations, and company-facing reviews.
+- The broader MASS AI stack also includes **programmatic synthetic data generation** for creating new theft scenarios, regional mixes, and alternate sample sets.
+- The platform can be adapted to run on **external CSV / Excel datasets** instead of the bundled sample files.
+- In short: the current showcase is synthetic by design, but the ingestion model is not limited to demo data.
+
+---
+
 ## Screenshots
 
 | Main Workspace | Risk Distribution |
