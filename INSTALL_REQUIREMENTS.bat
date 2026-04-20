@@ -1,3 +1,3 @@
 @echo off
-cd /d "%~dp0\project"
-python -m pip install -r requirements.txt
+cd /d "%~dp0"
+python -m pip install -r shared\requirements.txt

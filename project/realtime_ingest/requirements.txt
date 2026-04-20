@@ -1,7 +1,0 @@
-# MASS-AI realtime_ingest worker dependencies
-# feature_engine (Rust wheel) is installed separately via Dockerfile.worker
-
-psycopg2-binary>=2.9
-scikit-learn>=1.3
-numpy>=1.24
-paho-mqtt>=1.6

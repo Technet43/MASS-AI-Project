@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="description"
+        content="MASS-AI is a utility pilot platform for smart meter anomaly detection, electricity theft scoring, analyst workflows, and realtime telemetry development."
+    >
+    <title>MASS-AI | Utility Pilot for Smart Meter Risk Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="page-shell">
+        <header class="site-header">
+            <div class="brand-mark" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <a class="brand" href="#top">MASS-AI</a>
+            <nav class="site-nav" id="site-nav" aria-label="Primary">
+                <a href="#features">Features</a>
+                <a href="#workflow">Workflow</a>
+                <a href="#screenshots">Screenshots</a>
+                <a href="#roadmap">Roadmap</a>
+                <a href="#faq">FAQ</a>
+                <a href="https://github.com/Technet43/MASS-AI-Project" target="_blank" rel="noreferrer">GitHub</a>
+            </nav>
+            <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </header>
+
+        <main id="top">
+            <section class="hero">
+                <div class="hero-copy">
+                    <div class="eyebrow">Utility Pilot Platform</div>
+                    <h1>MASS-AI</h1>
+                    <h2 class="hero-subtitle">Smart meter anomaly intelligence built for real analyst workflows.</h2>
+                    <p class="hero-text">
+                        MASS-AI turns smart meter telemetry into risk signals, priority queues, and investigation-ready evidence.
+                        Today it already works as a strong prototype with desktop and Streamlit experiences. The next step is a stronger
+                        pilot platform built around Streamlit, realtime ingestion, and Rust-powered feature processing.
+                    </p>
+                    <div class="hero-actions">
+                        <a class="button button-primary" href="#screenshots">See the Prototype</a>
+                        <a class="button button-secondary" href="https://github.com/Technet43/MASS-AI-Project" target="_blank" rel="noreferrer">View Repository</a>
+                    </div>
+                    <div class="hero-meta">
+                        <span>Open source</span>
+                        <span>Desktop + Streamlit</span>
+                        <span>Pilot-ready</span>
+                    </div>
+                </div>
+
+                <div class="hero-visual">
+                    <div class="hero-stat stat-one">
+                        <strong>2000</strong>
+                        <span>demo workspace customers scored</span>
+                    </div>
+                    <div class="hero-stat stat-two">
+                        <strong>5</strong>
+                        <span>core scoring models in the main product story</span>
+                    </div>
+                    <figure class="hero-shot">
+                        <img src="images/desktop_overview.png" alt="MASS-AI desktop overview showing KPI cards, model performance, and ops brief panels">
+                    </figure>
+                </div>
+            </section>
+
+            <section class="impact-strip">
+                <article>
+                    <span class="impact-label">Positioning</span>
+                    <h2>Designed as a decision-support product, not just a model demo.</h2>
+                    <p>
+                        The project is positioned as a proof-of-value platform for anomaly detection, suspicious meter prioritization,
+                        evidence review, and analyst case handling.
+                    </p>
+                </article>
+                <article>
+                    <span class="impact-label">Context</span>
+                    <h2>Built around Turkey's smart meter transformation story.</h2>
+                    <p>
+                        MASS-AI is framed around the rollout of national smart metering infrastructure and the need to investigate
+                        high-risk consumption anomalies faster and more consistently.
+                    </p>
+                </article>
+            </section>
+
+            <section class="section" id="features">
+                <div class="section-copy">
+                    <span class="eyebrow">Core Experience</span>
+                    <h2>Simple to understand. Strong enough to pitch.</h2>
+                    <p>
+                        The product story stays focused on the essentials: scoring, prioritization, investigation flow, and a believable pilot roadmap.
+                    </p>
+                </div>
+
+                <div class="feature-grid">
+                    <article class="feature-card">
+                        <span class="feature-tag">01</span>
+                        <h3>Decision-first dashboard</h3>
+                        <p>Streamlit and desktop views surface risk bands, watchlists, exposure, and analyst actions instead of raw model output alone.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">02</span>
+                        <h3>Multi-model scoring</h3>
+                        <p>Isolation Forest, XGBoost, Random Forest, Gradient Boosting, and a stacking ensemble support the main batch scoring path.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">03</span>
+                        <h3>Ops center workflow</h3>
+                        <p>Cases, notes, history, follow-up logic, and worklist-style prioritization make the prototype feel like a real analyst tool.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">04</span>
+                        <h3>Synthetic scenario engine</h3>
+                        <p>Preset-driven demo data lets you show theft and anomaly patterns without waiting for access to restricted utility datasets.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">05</span>
+                        <h3>Realtime path in progress</h3>
+                        <p>The active development branch expands ingestion, telemetry handling, and near-realtime scoring for more believable pilot demos.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-tag">06</span>
+                        <h3>Explainable output</h3>
+                        <p>Risk bands, reasons, watchlists, evidence views, and recommended next steps help turn a score into an investigation story.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section" id="workflow">
+                <div class="section-copy">
+                    <span class="eyebrow">Product Flow</span>
+                    <h2>From telemetry to action.</h2>
+                    <p>The product story is structured as a utility workflow: ingest, score, prioritize, investigate.</p>
+                </div>
+
+                <div class="workflow-grid">
+                    <article class="workflow-step">
+                        <span>1</span>
+                        <h3>Ingest telemetry</h3>
+                        <p>Start with synthetic demo data today, then move toward canonical long-format telemetry for pilot onboarding.</p>
+                    </article>
+                    <article class="workflow-step">
+                        <span>2</span>
+                        <h3>Generate risk signals</h3>
+                        <p>Batch scoring combines multiple models while the realtime path focuses on fast anomaly detection from live-style inputs.</p>
+                    </article>
+                    <article class="workflow-step">
+                        <span>3</span>
+                        <h3>Prioritize analysts</h3>
+                        <p>Overview cards, risk mixes, customer search, and watchlists help analysts focus on the highest-impact cases first.</p>
+                    </article>
+                    <article class="workflow-step">
+                        <span>4</span>
+                        <h3>Investigate and act</h3>
+                        <p>Evidence panels, notes, export options, and ops workflows turn the prototype into something you can actually demonstrate to firms.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section" id="screenshots">
+                <div class="section-copy">
+                    <span class="eyebrow">Prototype Screens</span>
+                    <h2>The actual product, shown simply.</h2>
+                    <p>These screenshots come directly from the repo assets you already have, so the site stays connected to the real prototype.</p>
+                </div>
+
+                <div class="gallery-grid">
+                    <button class="gallery-card" data-image="images/login_screen.png" data-title="Login screen" data-copy="Demo authentication view for the MASS-AI desktop flow.">
+                        <img src="images/login_screen.png" alt="MASS-AI login screen">
+                        <span>Login screen</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/desktop_overview.png" data-title="Overview workspace" data-copy="Desktop overview with risk KPIs, model performance, and ops brief panels.">
+                        <img src="images/desktop_overview.png" alt="MASS-AI desktop overview">
+                        <span>Overview workspace</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/desktop_customers.png" data-title="Customer worklist" data-copy="Customer search, risk filter, and ranked records for investigation.">
+                        <img src="images/desktop_customers.png" alt="MASS-AI customer worklist">
+                        <span>Customer worklist</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/chart_watchlist.png" data-title="Priority watchlist" data-copy="High-risk accounts displayed as a ranked operational watchlist.">
+                        <img src="images/chart_watchlist.png" alt="Priority watchlist chart">
+                        <span>Priority watchlist</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/chart_risk_curve.png" data-title="Risk curve" data-copy="A threshold-based look at how many customers sit above the danger line.">
+                        <img src="images/chart_risk_curve.png" alt="Risk curve chart">
+                        <span>Risk curve</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/chart_model_quality.png" data-title="Model quality" data-copy="A quick visual for comparing scoring quality across the model set.">
+                        <img src="images/chart_model_quality.png" alt="Model quality chart">
+                        <span>Model quality</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/chart_risk_mix.png" data-title="Risk mix breakdown" data-copy="Distribution of customers across risk bands — critical, high, medium, and low.">
+                        <img src="images/chart_risk_mix.png" alt="Risk mix breakdown chart">
+                        <span>Risk mix breakdown</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/dashboard_v2_preview.png" data-title="Streamlit dashboard v2" data-copy="Second-generation Streamlit dashboard with improved layout and analyst controls.">
+                        <img src="images/dashboard_v2_preview.png" alt="Streamlit dashboard v2 preview">
+                        <span>Streamlit dashboard v2</span>
+                    </button>
+                    <button class="gallery-card" data-image="images/model_results.png" data-title="Model comparison results" data-copy="Side-by-side performance metrics across all scoring models in the ensemble.">
+                        <img src="images/model_results.png" alt="Model comparison results">
+                        <span>Model comparison results</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="section" id="roadmap">
+                <div class="section-copy">
+                    <span class="eyebrow">In Development</span>
+                    <h2>Built now. Evolving next.</h2>
+                    <p>A working prototype today, with a clear path toward a production-grade utility pilot platform.</p>
+                </div>
+
+                <div class="roadmap-layout">
+                    <article class="roadmap-card">
+                        <h3>Already in the prototype</h3>
+                        <ul>
+                            <li>Desktop analyst interface with glass-style workspace panels</li>
+                            <li>Streamlit dashboard and multi-model batch scoring flow</li>
+                            <li>Ops-center direction with cases, notes, and prioritization</li>
+                            <li>Preset-based synthetic data generation for believable demos</li>
+                        </ul>
+                    </article>
+                    <article class="roadmap-card roadmap-accent">
+                        <h3>Currently developing</h3>
+                        <ul>
+                            <li>Streamlit decision dashboard improvements for broader pilot use</li>
+                            <li>Rust-based feature engine for faster telemetry processing</li>
+                            <li>Realtime ingestion components and gateway-oriented data flow</li>
+                            <li>Cleaner telemetry schema so utilities can connect more easily</li>
+                        </ul>
+                        <a class="text-link" href="https://github.com/Technet43/MASS-AI-Project/tree/codex/update-dashboard-and-realtime-ingest" target="_blank" rel="noreferrer">See the active branch</a>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section tech-section">
+                <div class="section-copy">
+                    <span class="eyebrow">Tech Stack</span>
+                    <h2>Tools behind the prototype.</h2>
+                </div>
+
+                <div class="stack-list">
+                    <span>Python</span>
+                    <span>Streamlit</span>
+                    <span>scikit-learn</span>
+                    <span>XGBoost</span>
+                    <span>TensorFlow research path</span>
+                    <span>SQLite Ops Center</span>
+                    <span>Rust feature engine</span>
+                    <span>Realtime ingest services</span>
+                </div>
+            </section>
+
+            <section class="section" id="faq">
+                <div class="section-copy">
+                    <span class="eyebrow">FAQ</span>
+                    <h2>Clear answers, early.</h2>
+                </div>
+
+                <div class="faq-list">
+                    <details class="faq-item" open>
+                        <summary>Is MASS-AI already a full production system?</summary>
+                        <p>No. The strongest and most honest positioning is a utility pilot or proof-of-value decision-support platform.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>What makes this more than a model demo?</summary>
+                        <p>The project is shaped around analyst workflow: scoring, watchlists, evidence, case handling, and dashboard-driven triage.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>What data can it work with right now?</summary>
+                        <p>The prototype works well with synthetic scenarios now, and the active roadmap pushes toward canonical long-format telemetry for real utility onboarding.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>Why mention Streamlit, Rust, and realtime components?</summary>
+                        <p>Because that work already appears in the active branch and helps explain how the prototype is evolving into a more accessible utility-facing platform.</p>
+                    </details>
+                </div>
+            </section>
+
+            <section class="closing-cta">
+                <div>
+                    <span class="eyebrow">Get Started</span>
+                    <h2>Ready to explore the platform?</h2>
+                    <p>
+                        Clone the repository, run the prototype locally, and see how MASS-AI turns smart meter telemetry
+                        into actionable risk intelligence for utility analysts.
+                    </p>
+                </div>
+                <div class="closing-actions">
+                    <a class="button button-primary" href="https://github.com/Technet43/MASS-AI-Project" target="_blank" rel="noreferrer">Open GitHub</a>
+                    <a class="button button-secondary" href="#top">Back to top</a>
+                </div>
+            </section>
+        </main>
+
+        <footer class="site-footer">
+            <p>MASS-AI by Omer Burak Kocak. Built as a pilot-facing smart meter anomaly intelligence prototype.</p>
+        </footer>
+    </div>
+
+    <dialog class="lightbox" id="lightbox">
+        <div class="lightbox-header">
+            <button class="lightbox-nav" id="lightbox-prev" type="button" aria-label="Previous image">&#8592;</button>
+            <span id="lightbox-counter" class="lightbox-counter"></span>
+            <button class="lightbox-nav" id="lightbox-next" type="button" aria-label="Next image">&#8594;</button>
+            <button class="lightbox-close" type="button" aria-label="Close preview">&#10005;</button>
+        </div>
+        <img id="lightbox-image" src="" alt="">
+        <div class="lightbox-copy">
+            <h3 id="lightbox-title"></h3>
+            <p id="lightbox-text"></p>
+        </div>
+    </dialog>
+
+    <script src="script.js"></script>
+</body>
+</html>

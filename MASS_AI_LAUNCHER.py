@@ -6,9 +6,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = BASE_DIR / "project"
-if str(PROJECT_DIR) not in sys.path:
-    sys.path.insert(0, str(PROJECT_DIR))
+SHARED_DIR = BASE_DIR / "shared"
+CORE_DIR = SHARED_DIR / "core"
+DESKTOP_DIR = BASE_DIR / "old_desktop"
+WEB_DIR = BASE_DIR / "new_web"
+for path in (DESKTOP_DIR, CORE_DIR):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from ui_kit import (
     DEFAULT_THEME_NAME,
@@ -34,9 +38,6 @@ class LauncherApp:
         self.root.geometry("1080x720")
         self.root.minsize(900, 620)
         self.style = ttk.Style()
-        # TODO: track Streamlit subprocess for lifecycle management
-        self._streamlit_proc: subprocess.Popen | None = None
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         initial_theme_name = normalize_theme_name(os.environ.get("MASS_AI_THEME") or load_theme_preference() or DEFAULT_THEME_NAME)
         self.theme_name_var = tk.StringVar(value=initial_theme_name)
         self.theme = build_glass_theme(self.theme_name_var.get())
@@ -57,42 +58,25 @@ class LauncherApp:
             messagebox.showerror("MASS-AI", f"The command could not be launched:\n{exc}")
 
     def open_desktop(self):
-        target = PROJECT_DIR / "mass_ai_desktop.py"
+        target = DESKTOP_DIR / "mass_ai_desktop.py"
         if not target.exists():
             messagebox.showerror("MASS-AI", "mass_ai_desktop.py was not found.")
             return
-        self.run_command([sys.executable, str(target)], cwd=PROJECT_DIR)
+        self.run_command([sys.executable, str(target)], cwd=DESKTOP_DIR)
 
     def open_dashboard(self):
-        target = PROJECT_DIR / "dashboard" / "app.py"
+        target = WEB_DIR / "dashboard" / "app.py"
         if not target.exists():
-            messagebox.showerror("MASS-AI", "dashboard/app.py was not found.")
+            messagebox.showerror("MASS-AI", "new_web/dashboard/app.py was not found.")
             return
-        # TODO: stop any existing Streamlit instance before launching a new one
-        if self._streamlit_proc is not None and self._streamlit_proc.poll() is None:
-            self._streamlit_proc.terminate()
-        try:
-            cmd = [sys.executable, "-m", "streamlit", "run", str(target)]
-            self._streamlit_proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, env=self.command_env())
-        except Exception as exc:
-            messagebox.showerror("MASS-AI", f"The command could not be launched:\n{exc}")
-
-    def _on_close(self):
-        # TODO: terminate Streamlit server when the launcher window is closed
-        if self._streamlit_proc is not None and self._streamlit_proc.poll() is None:
-            try:
-                self._streamlit_proc.terminate()
-                self._streamlit_proc.wait(timeout=5)
-            except Exception:
-                pass
-        self.root.destroy()
+        self.run_command([sys.executable, "-m", "streamlit", "run", str(target)], cwd=WEB_DIR)
 
     def install_requirements(self):
-        req = PROJECT_DIR / "requirements.txt"
+        req = SHARED_DIR / "requirements.txt"
         if not req.exists():
             messagebox.showerror("MASS-AI", "requirements.txt was not found.")
             return
-        self.run_command([sys.executable, "-m", "pip", "install", "-r", str(req)], cwd=PROJECT_DIR)
+        self.run_command([sys.executable, "-m", "pip", "install", "-r", str(req)], cwd=BASE_DIR)
 
     def run_smoke_tests(self):
         target = BASE_DIR / "RUN_SMOKE_TESTS.bat"
@@ -105,10 +89,8 @@ class LauncherApp:
                 "-m",
                 "unittest",
                 "discover",
-                "-s",
-                str(PROJECT_DIR / "tests"),
-                "-t",
-                str(PROJECT_DIR),
+                "-s", str(SHARED_DIR / "tests"),
+                "-t", str(SHARED_DIR),
                 "-p",
                 "test_*.py",
                 "-v",
@@ -117,11 +99,11 @@ class LauncherApp:
         )
 
     def build_windows_executable(self):
-        target = BASE_DIR / "BUILD_DESKTOP_EXE.bat"
+        target = DESKTOP_DIR / "BUILD_DESKTOP_EXE.bat"
         if sys.platform.startswith("win") and target.exists():
-            self.run_command(f'"{target}"', cwd=BASE_DIR)
+            self.run_command(f'"{target}"', cwd=DESKTOP_DIR)
             return
-        messagebox.showinfo("MASS-AI", "Windows executable packaging is available on Windows via BUILD_DESKTOP_EXE.bat.")
+        messagebox.showinfo("MASS-AI", "Windows executable packaging is available on Windows via old_desktop/BUILD_DESKTOP_EXE.bat.")
 
     def export_support_bundle(self):
         path = filedialog.asksaveasfilename(

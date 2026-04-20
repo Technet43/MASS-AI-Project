@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
-CORE_DIR = PROJECT_DIR / "core"
+SHARED_DIR = Path(__file__).resolve().parent.parent
+CORE_DIR = SHARED_DIR / "core"
 if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 
