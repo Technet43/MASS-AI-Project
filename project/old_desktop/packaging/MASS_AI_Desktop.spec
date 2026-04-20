@@ -14,7 +14,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 a = Analysis(
     ['..\\mass_ai_desktop.py'],
-    pathex=['..'],
+    pathex=['..', '..\\..\\core'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

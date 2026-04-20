@@ -16,6 +16,13 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = CURRENT_DIR.parent
+CORE_DIR = PROJECT_DIR / "core"
+for path in (CURRENT_DIR, CORE_DIR):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
 MISSING = []
 try:
     import matplotlib
@@ -1376,7 +1383,7 @@ class MassAIApp:
         threading.Thread(target=run, daemon=True).start()
 
     def _tools_install_deps(self):
-        req = Path(__file__).resolve().parent / "requirements.txt"
+        req = CURRENT_DIR / "requirements.txt"
         self._tools_run_subprocess(f'"{sys.executable}" -m pip install -r "{req}"', "Installing dependencies")
 
     def _tools_run_tests(self):

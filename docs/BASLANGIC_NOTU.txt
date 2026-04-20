@@ -10,7 +10,7 @@ Quick start:
 
 To build a Windows executable:
 - Run BUILD_DESKTOP_EXE.bat.
-- The packaged app will be created under project\artifacts\dist\MASS_AI_Desktop.exe.
+- The packaged app will be created under project\old_desktop\artifacts\dist\MASS_AI_Desktop.exe.
 
 To run a quick health check:
 - Run RUN_SMOKE_TESTS.bat.
@@ -18,17 +18,20 @@ To run a quick health check:
 Main files:
 - MASS_AI_LAUNCHER.py -> Unified launcher
 - START_MASS_AI_DESKTOP.bat -> Direct desktop app entry point
+- START_MASS_AI_WEB.bat -> Direct web dashboard entry point
 - BUILD_DESKTOP_EXE.bat -> Windows executable packaging
 - RUN_SMOKE_TESTS.bat -> Basic smoke tests
-- project\mass_ai_desktop.py -> Main desktop application
+- project\old_desktop\mass_ai_desktop.py -> Main desktop application
 
 Organized folders:
-- project\dashboard -> Streamlit dashboard
-- project\legacy_pipeline -> Older research and pipeline scripts
+- project\core -> Shared engine and helpers
+- project\old_desktop -> Old desktop version
+- project\new_web -> New web dashboard version
+- project\archive\legacy_pipeline -> Older research and pipeline scripts
 - project\tests -> Unit tests
 - project\data\processed -> CSV outputs and sample processed data
 - project\data\maps -> Map sample files
-- project\artifacts -> Build outputs and logs
-- project\packaging -> PyInstaller spec and packaging assets
+- project\old_desktop\artifacts -> Desktop build outputs and logs
+- project\old_desktop\packaging -> PyInstaller spec and packaging assets
 - business_docs\project_research -> Paper and presentation files
 - docs\PROJECT_LAYOUT.md -> Clean folder map

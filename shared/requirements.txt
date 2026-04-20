@@ -1,4 +1,4 @@
 # MASS-AI combined dependencies
 # Installs both the old desktop app and the new web dashboard stacks.
--r old_desktop/requirements.txt
--r new_web/requirements.txt
+-r ../old_desktop/requirements.txt
+-r ../new_web/requirements.txt
