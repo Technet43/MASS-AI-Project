@@ -28,17 +28,23 @@
 
 ## Screenshots
 
-| Main Workspace | Overview & KPIs |
+> Screenshot set currently reuses the archived legacy visuals until the refreshed web dashboard capture pack is finalized.
+
+| Desktop Workspace | Desktop Overview |
 |---|---|
-| ![Customers](images/desktop_customers.png) | ![Overview](images/desktop_overview.png) |
+| ![Desktop customers](new_web/site/images/desktop_customers.png) | ![Desktop overview](new_web/site/images/desktop_overview.png) |
+
+| Dashboard Overview | Dashboard v2 Preview |
+|---|---|
+| ![Dashboard preview](new_web/site/images/dashboard_preview.png) | ![Dashboard v2 preview](new_web/site/images/dashboard_v2_preview.png) |
 
 | Priority Watchlist | Risk Curve |
 |---|---|
-| ![Watchlist](images/chart_watchlist.png) | ![Risk Curve](images/chart_risk_curve.png) |
+| ![Watchlist](new_web/site/images/chart_watchlist.png) | ![Risk Curve](new_web/site/images/chart_risk_curve.png) |
 
 | Risk Mix by Band | Model Quality |
 |---|---|
-| ![Risk Mix](images/chart_risk_mix.png) | ![Model Quality](images/chart_model_quality.png) |
+| ![Risk Mix](new_web/site/images/chart_risk_mix.png) | ![Model Quality](new_web/site/images/chart_model_quality.png) |
 
 ---
 
@@ -287,7 +293,7 @@ MASS_AI_UNIFIED_APP/
 │       └── test_ops_center.py
 │
 ├── docs/                        # Architecture & design documents
-├── images/                      # Screenshots & result plots
+├── new_web/site/images/         # Archived screenshots & result plots used in docs
 └── business_docs/               # Research materials & presentations
 ```
 
