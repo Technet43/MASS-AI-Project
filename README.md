@@ -28,12 +28,6 @@
 
 ## Screenshots
 
-> Screenshot set currently reuses the archived legacy visuals until the refreshed web dashboard capture pack is finalized.
-
-| Desktop Workspace | Desktop Overview |
-|---|---|
-| ![Desktop customers](new_web/site/images/desktop_customers.png) | ![Desktop overview](new_web/site/images/desktop_overview.png) |
-
 | Dashboard Overview | Dashboard v2 Preview |
 |---|---|
 | ![Dashboard preview](new_web/site/images/dashboard_preview.png) | ![Dashboard v2 preview](new_web/site/images/dashboard_v2_preview.png) |
@@ -45,6 +39,10 @@
 | Risk Mix by Band | Model Quality |
 |---|---|
 | ![Risk Mix](new_web/site/images/chart_risk_mix.png) | ![Model Quality](new_web/site/images/chart_model_quality.png) |
+
+| Detection Results | Advanced Pipeline |
+|---|---|
+| ![Model results](new_web/site/images/model_results.png) | ![Advanced pipeline results](new_web/site/images/advanced_pipeline_results.png) |
 
 ---
 
