@@ -209,29 +209,48 @@ Compensates for each model's individual weaknesses. When Isolation Forest is unc
 
 ## Architecture
 
+The platform turns raw smart meter readings into operational decisions through a layered detection pipeline:
+
+- Input layer: raw CSV, uploaded meter exports, or already scored customer records
+- Intelligence layer: feature engineering plus supervised, unsupervised, and sequence-based models
+- Action layer: risk scoring, theft-pattern classification, and Ops Center case handling
+
+```mermaid
+flowchart TD
+    A["Smart Meter Data<br/>raw CSV or pre-scored records"] --> B["Feature Engineering<br/>20+ statistical, temporal, and anomaly features"]
+
+    B --> B1["Statistical Signals<br/>mean, std, skewness, kurtosis"]
+    B --> B2["Temporal Signals<br/>night/day ratio, peak hour, weekday vs weekend"]
+    B --> B3["Anomaly Signals<br/>zero rate, sudden change ratio, trend slope"]
+
+    B1 --> C
+    B2 --> C
+    B3 --> C
+
+    subgraph C["Model Ensemble"]
+        C1["Isolation Forest"]
+        C2["XGBoost"]
+        C3["Random Forest"]
+        C4["Gradient Boosting"]
+        C5["LSTM Autoencoder"]
+        C6["Stacking Meta-Learner"]
+        C1 --> C6
+        C2 --> C6
+        C3 --> C6
+        C4 --> C6
+        C5 --> C6
+    end
+
+    C --> D["Risk Score<br/>Theft Pattern Classification"]
+    D --> E["Ops Center<br/>Case Management and Audit Trail"]
 ```
-Smart Meter Data  (raw CSV or pre-scored)
-        │
-        ▼
-Feature Engineering  ──  20+ features
-  Statistical:  mean · std · skewness · kurtosis
-  Temporal:     night/day ratio · peak hour · weekday vs weekend
-  Anomaly:      zero% · sudden change ratio · trend slope
-        │
-        ▼
- ┌──────────────────────────────────────────┐
- │              Model Ensemble              │
- │  Isolation Forest   XGBoost             │
- │  Random Forest      Gradient Boosting   │
- │  LSTM Autoencoder  ──►  Stacking Meta   │
- └──────────────────────────────────────────┘
-        │
-        ▼
-Risk Score  +  Theft Pattern Classification
-        │
-        ▼
-  Ops Center  (Case Management · Audit Trail)
-```
+
+| Layer | Role |
+|---|---|
+| **Data Intake** | Collects smart meter readings from generated samples, CSV uploads, or pre-scored records |
+| **Feature Pipeline** | Converts raw usage history into compact signals that models can compare consistently |
+| **Model Stack** | Combines anomaly detection, classification, and sequence modeling for stronger decisions |
+| **Operations Output** | Produces a risk score and theft context that can be escalated into analyst workflows |
 
 ---
 
