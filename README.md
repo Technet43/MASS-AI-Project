@@ -28,21 +28,25 @@
 
 ## Screenshots
 
-| Dashboard Overview | Dashboard v2 Preview |
+| Overview Dashboard | Risk Distribution & Alerts |
 |---|---|
-| ![Dashboard preview](new_web/site/images/dashboard_preview.png) | ![Dashboard v2 preview](new_web/site/images/dashboard_v2_preview.png) |
+| ![Overview dashboard](new_web/site/images/dashboard_overview_current.png) | ![Risk distribution and alerts](new_web/site/images/overview_risk_alerts_current.png) |
 
-| Priority Watchlist | Risk Curve |
+| Time-Series Comparison | Statistical Comparison |
 |---|---|
-| ![Watchlist](new_web/site/images/chart_watchlist.png) | ![Risk Curve](new_web/site/images/chart_risk_curve.png) |
+| ![Time-series comparison](new_web/site/images/comparison_timeseries_current.png) | ![Statistical comparison](new_web/site/images/comparison_statistics_current.png) |
 
-| Risk Mix by Band | Model Quality |
+| Model Performance Curves | Confusion Matrices & Feature Importance |
 |---|---|
-| ![Risk Mix](new_web/site/images/chart_risk_mix.png) | ![Model Quality](new_web/site/images/chart_model_quality.png) |
+| ![Model performance curves](new_web/site/images/performance_curves_current.png) | ![Confusion matrices and feature importance](new_web/site/images/performance_confusion_current.png) |
 
-| Detection Results | Advanced Pipeline |
+| Customer Detail Review | Customer Feature Profile |
 |---|---|
-| ![Model results](new_web/site/images/model_results.png) | ![Advanced pipeline results](new_web/site/images/advanced_pipeline_results.png) |
+| ![Customer detail review](new_web/site/images/customer_detail_current.png) | ![Customer feature profile](new_web/site/images/customer_radar_current.png) |
+
+| Live Simulation Controls | Live Simulation Preview |
+|---|---|
+| ![Live simulation controls](new_web/site/images/live_simulation_controls_current.png) | ![Live simulation preview](new_web/site/images/live_simulation_preview_current.png) |
 
 ---
 
