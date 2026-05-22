@@ -13,8 +13,13 @@
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0%2B-EC4E20)](https://xgboost.readthedocs.io/)
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15%2B-FF6F00?logo=tensorflow&logoColor=white)](https://tensorflow.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?logo=vercel&logoColor=white)](https://mass-ai-project.vercel.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+
+<br/>
+
+[Live Website](https://mass-ai-project.vercel.app/) · [Repository](https://github.com/Technet43/MASS-AI-Project)
 
 </div>
 
@@ -26,7 +31,9 @@
 
 ## React + Vercel Website
 
-The repository root now includes a Vite React website that can be deployed directly on Vercel.
+The repository root includes a Vite React website deployed on Vercel:
+
+**Live site:** https://mass-ai-project.vercel.app/
 
 ```bash
 npm install
