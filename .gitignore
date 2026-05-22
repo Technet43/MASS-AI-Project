@@ -25,9 +25,13 @@ ENV/
 *.sublime-workspace
 
 # Project build outputs
+node_modules/
+.vercel/
+coverage/
 project/artifacts/
 project/build/
 project/dist/
+dist/
 project/old_desktop/artifacts/
 project/old_desktop/build/
 project/old_desktop/dist/

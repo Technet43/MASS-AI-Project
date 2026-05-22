@@ -24,6 +24,22 @@
 
 <br/>
 
+## React + Vercel Website
+
+The repository root now includes a Vite React website that can be deployed directly on Vercel.
+
+```bash
+npm install
+npm run dev
+npm run build
+```
+
+Vercel settings:
+
+- Framework Preset: `Vite`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+
 ---
 
 ## Screenshots
