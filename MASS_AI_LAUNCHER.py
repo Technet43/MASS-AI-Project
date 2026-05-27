@@ -14,6 +14,12 @@ for path in (DESKTOP_DIR, CORE_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+# Architecture note (2026):
+# The real brain is now in shared/core (MassAIEngine).
+# old_desktop and new_web/dashboard are being migrated to use it.
+# This launcher glues legacy pieces during the transition.
+# Long-term goal: shared/core becomes the only place with ML logic.
+
 from ui_kit import (
     DEFAULT_THEME_NAME,
     THEME_CHOICES,

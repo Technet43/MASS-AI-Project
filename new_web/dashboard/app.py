@@ -1748,9 +1748,17 @@ def render_model_performance(df, metrics):
             c2.metric("Critical Cases", overview.get("critical_count", "-"))
             c3.metric("Est. Monthly Exposure", f"{overview.get('total_loss', 0):,.0f} ₺")
 
-        st.info("Full multi-model curves and detailed metrics from the 6-model ensemble will be integrated in the next steps.")
+        engine_res = metrics.get("engine_results", {})
+        if engine_res:
+            st.markdown("**Engine Model Performance (from shared/core):**")
+            cols = st.columns(min(4, len(engine_res)))
+            for i, (model_name, res) in enumerate(list(engine_res.items())[:4]):
+                auc = res.get("auc", 0)
+                f1 = res.get("f1", 0)
+                cols[i].metric(model_name, f"AUC {auc:.3f}", f"F1 {f1:.3f}")
+
+        st.info("Detailed ROC/PR curves for the full 6-model ensemble coming in follow-up work.")
         st.markdown("---")
-        # Still allow legacy charts below if partial metrics exist
         if "rf_auc" not in metrics:
             return
     else:
