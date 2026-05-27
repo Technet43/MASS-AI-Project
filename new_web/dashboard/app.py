@@ -2534,41 +2534,34 @@ def main():
     )
 
     # Prefer the real shared MassAIEngine (big step toward removing duplication)
+    # === Preferred Path: Use MassAIEngine via clean adapters ===
     engine_data, raw_df = load_data(use_engine=True)
 
     used_engine = False
+
     if raw_df is None and isinstance(engine_data, dict):
-        # Use the new clean adapter (one-stop helper)
+        # Clean modern path
         try:
             from shared.core.dashboard_adapters import get_scored_data_and_metrics
             features_df, metrics = get_scored_data_and_metrics(engine_data)
             used_engine = True
         except Exception:
-            # Fallback to old local function if something goes wrong
-            features_df, engine_metrics = get_engine_metrics_and_df(engine_data)
-            if features_df is not None:
-                metrics = engine_metrics
-                used_engine = True
-            else:
-                features_df, raw_df = load_data(use_engine=False)
-                # Try to use engine-based scoring even in fallback
-                try:
-                    from shared.core.dashboard_adapters import run_engine_based_scoring
-                    features_df, metrics = run_engine_based_scoring(engine_data if isinstance(engine_data, dict) else {})
-                except Exception:
-                    features_df, metrics = run_models(features_df)
+            # Rare fallback
+            features_df, raw_df = load_data(use_engine=False)
+            features_df, metrics = run_models(features_df)
     else:
-        # Legacy path
+        # Legacy / non-engine data path (will become less common)
         if raw_df is None:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
         else:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
-        # Prefer engine-based path even in legacy branch
+
+        # Still attempt modern engine-based scoring
         try:
             from shared.core.dashboard_adapters import run_engine_based_scoring
             features_df, metrics = run_engine_based_scoring(engine_data if isinstance(engine_data, dict) else {})
         except Exception:
-            features_df, metrics = run_models_prefer_engine(features_df, engine_result=engine_data if isinstance(engine_data, dict) else None)
+            features_df, metrics = run_models(features_df)
     filtered_df, threshold = render_sidebar(features_df)
     local_t = get_translations()
 
