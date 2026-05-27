@@ -2,6 +2,9 @@
 MASS-AI Dashboard v2.1
 ======================
 
+STATUS: Under active migration to use shared/core/dashboard_adapters.py
+Old duplicated ML logic is being progressively removed.
+
 This Streamlit dashboard has been updated to support a full bilingual user
 interface without changing the underlying analytics workflow.
 
