@@ -44,10 +44,19 @@
 - Potansiyel pazar: Türkiye + benzer sorun yaşayan ülkeler.
 - Sosyal etki: Kaçak elektriğin azaltılması = daha adil fatura + daha az yük kaybı.
 
-### 7. İş Modeli (Öneriler)
-- SaaS model (dağıtım şirketlerine abonelik)
-- Başarı bazlı ücretlendirme (tespit edilen kaçak miktarı üzerinden)
-- Pilot proje + sonra ölçeklendirme
+### 7. İş Modeli (Daha Güçlü Versiyon - Önerilen)
+**Önerilen Model:** Hibrit SaaS + Başarı Bazlı
+
+- Aylık/ yıllık SaaS ücreti (temel kullanım için)
+- Tespit edilen ve önlenen kaçak miktarı üzerinden başarı primi
+- Opsiyonel: Saha ekibi için ek modül satışı
+
+**Neden bu model?**
+- Dağıtım şirketleri için risk düşük (sadece tespit için ödeme)
+- Bizim için ölçeklenebilir ve öngörülebilir gelir
+- Erken aşamada pilot için cazip
+
+**Not:** Bu model hâlâ olgunlaşma aşamasında. Jüriye "henüz netleşmedi, pilotla birlikte netleşecek" diye dürüst anlatılabilir.
 
 ### 8. Yol Haritası
 - Kısa vadeli (6 ay): Pilot proje (1 dağıtım şirketi)
