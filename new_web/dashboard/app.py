@@ -984,6 +984,36 @@ def load_synthetic_via_engine(n_customers: int = 2000, n_days: int = 180, preset
         return None, f"Engine failed: {exc}"
 
 
+def get_engine_metrics_and_df(engine_result: dict | None):
+    """Extract dashboard-compatible metrics + scored df from MassAIEngine result."""
+    if not engine_result or "scored" not in engine_result:
+        return None, None
+
+    scored = engine_result["scored"].copy()
+    engine = engine_result.get("engine")
+
+    # Map engine columns to what the old dashboard expects
+    if "risk_category" in scored.columns:
+        scored["risk_level"] = scored["risk_category"].astype(str)
+    if "risk_score" in scored.columns and "theft_probability" not in scored.columns:
+        scored["theft_probability"] = scored["risk_score"] / 100.0
+
+    # Build a minimal metrics dict for the performance tab
+    # (We don't have full cross-val curves from engine easily, so provide what we can)
+    metrics = {
+        "engine_mode": True,
+        "best_model": engine_result.get("best_model", "Stacking Ensemble"),
+        "overview": engine_result.get("overview", {}),
+        "feature_importance_available": False,
+    }
+
+    # If the engine has trained models with importances, we can expose later
+    if engine and hasattr(engine, "results"):
+        metrics["engine_results"] = engine.results
+
+    return scored, metrics
+
+
 st.set_page_config(
     page_title=t["page_title"],
     page_icon="⚡",
@@ -1686,11 +1716,28 @@ def render_model_performance(df, metrics):
     local_t = get_translations()
     st.markdown(f"### {local_t['performance']['title']}")
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("RF ROC-AUC", f"{metrics['rf_auc']:.4f}")
-    col2.metric("RF F1 Score", f"{metrics['rf_f1']:.4f}")
-    col3.metric("IF ROC-AUC", f"{metrics['iso_auc']:.4f}")
-    col4.metric("IF F1 Score", f"{metrics['iso_f1']:.4f}")
+    # New path: When using the real MassAIEngine, show richer info
+    if metrics and metrics.get("engine_mode"):
+        st.success(f"🚀 Using advanced engine — Best model: **{metrics.get('best_model', 'Stacking Ensemble')}**")
+        overview = metrics.get("overview", {})
+        if overview:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("High Risk Customers", overview.get("high_risk_count", "-"))
+            c2.metric("Critical Cases", overview.get("critical_count", "-"))
+            c3.metric("Est. Monthly Exposure", f"{overview.get('total_loss', 0):,.0f} ₺")
+
+        st.info("Full multi-model curves and detailed metrics from the 6-model ensemble will be integrated in the next steps.")
+        st.markdown("---")
+        # Still allow legacy charts below if partial metrics exist
+        if "rf_auc" not in metrics:
+            return
+    else:
+        # Legacy path metrics
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("RF ROC-AUC", f"{metrics.get('rf_auc', 0):.4f}")
+        col2.metric("RF F1 Score", f"{metrics.get('rf_f1', 0):.4f}")
+        col3.metric("IF ROC-AUC", f"{metrics.get('iso_auc', 0):.4f}")
+        col4.metric("IF F1 Score", f"{metrics.get('iso_f1', 0):.4f}")
 
     st.markdown("---")
     col1, col2 = st.columns(2)
@@ -2408,11 +2455,23 @@ def main():
     )
 
     # Prefer the real shared MassAIEngine (big step toward removing duplication)
-    features_df, raw_df = load_data(use_engine=True)
-    if raw_df is None:
-        # Engine path returned the scored dataframe directly (new preferred flow)
-        metrics = {}
+    engine_data, raw_df = load_data(use_engine=True)
+
+    used_engine = False
+    if raw_df is None and isinstance(engine_data, dict):
+        features_df, engine_metrics = get_engine_metrics_and_df(engine_data)
+        if features_df is not None:
+            metrics = engine_metrics
+            used_engine = True
+        else:
+            features_df, raw_df = load_data(use_engine=False)
+            features_df, metrics = run_models(features_df)
     else:
+        # Legacy path
+        if raw_df is None:
+            features_df = engine_data if engine_data is not None else pd.DataFrame()
+        else:
+            features_df = engine_data if engine_data is not None else pd.DataFrame()
         features_df, metrics = run_models(features_df)
     filtered_df, threshold = render_sidebar(features_df)
     local_t = get_translations()
