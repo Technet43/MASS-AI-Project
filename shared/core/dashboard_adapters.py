@@ -154,6 +154,20 @@ def get_engine_scored_for_performance(engine_result: dict) -> dict:
     }
 
 
+def get_scored_data_and_metrics(engine_result: dict) -> tuple:
+    """
+    One-stop helper that returns both the scored dataframe and metrics dict
+    ready for the dashboard. Reduces duplication in app.py.
+    """
+    if not engine_result:
+        return pd.DataFrame(), {}
+
+    scored = get_rich_scored_data_for_ui(engine_result)
+    metrics = extract_metrics_from_engine(engine_result)
+
+    return scored, metrics
+
+
 def extract_metrics_from_engine(engine_result: dict) -> dict:
     """
     Converts engine result into the metrics format expected by the current

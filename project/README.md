@@ -6,11 +6,12 @@ This directory is being phased out. Most of its content has already been moved t
 **Current single source of truth:**
 `../shared/core/` (especially `mass_ai_engine.py`)
 
-**What remains here (temporary):**
-- Old README and requirements (for reference only)
-- `tests/` — deprecated (active tests are in `../shared/tests/`)
+**What remains here (mostly empty now):**
+- This README (will be removed soon)
 
-**Next step:** Remaining items will be moved to `legacy/` or deleted.
+Most legacy content has been moved to `../legacy/`.
+
+**Do not use this folder.** It will be fully cleaned up soon.
 
 **Do not develop here.** Use `shared/core/` and the main launchers instead.
 

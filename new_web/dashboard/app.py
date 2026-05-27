@@ -2523,14 +2523,10 @@ def main():
 
     used_engine = False
     if raw_df is None and isinstance(engine_data, dict):
-        # Use the new clean adapter
+        # Use the new clean adapter (one-stop helper)
         try:
-            from shared.core.dashboard_adapters import (
-                get_rich_scored_data_for_ui,
-                extract_metrics_from_engine,
-            )
-            features_df = get_rich_scored_data_for_ui(engine_data)
-            metrics = extract_metrics_from_engine(engine_data)
+            from shared.core.dashboard_adapters import get_scored_data_and_metrics
+            features_df, metrics = get_scored_data_and_metrics(engine_data)
             used_engine = True
         except Exception:
             # Fallback to old local function if something goes wrong
