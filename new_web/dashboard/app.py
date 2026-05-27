@@ -2203,10 +2203,7 @@ def render_live_simulation(df, raw_df):
             if "simulation_df" in sim_data and len(sim_data["simulation_df"]) > 0:
                 simulation_df = sim_data["simulation_df"]
         except Exception:
-            # Fallback to older local helper
-            engine_sim = prepare_simulation_data_from_engine(st.session_state.get("engine_data", {}).get("scored"))
-            if engine_sim is not None and len(engine_sim) > 0:
-                simulation_df = engine_sim
+            pass  # silently fall back to whatever df we have
 
     if uploaded_override_active:
         st.success(local_t["simulation"]["active_uploaded_info"])
