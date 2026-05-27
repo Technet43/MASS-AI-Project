@@ -114,3 +114,41 @@ def get_rich_scored_data_for_ui(engine_result: dict) -> pd.DataFrame:
         df["theft_probability"] = df["risk_score"] / 100.0
 
     return df
+
+
+def prepare_simulation_from_engine(engine_result: dict, n_customers: int = 5) -> dict:
+    """
+    High-level helper that returns everything the live simulation needs
+    when running on top of the engine.
+    """
+    if not engine_result or "scored" not in engine_result:
+        return {"error": "No engine scored data"}
+
+    scored = get_rich_scored_data_for_ui(engine_result)
+
+    # Pick interesting customers (highest risk first)
+    if "theft_probability" in scored.columns:
+        top_customers = scored.nlargest(n_customers, "theft_probability")
+    else:
+        top_customers = scored.head(n_customers)
+
+    return {
+        "simulation_df": top_customers,
+        "best_model": engine_result.get("best_model"),
+        "overview": engine_result.get("overview", {}),
+    }
+
+
+def get_engine_scored_for_performance(engine_result: dict) -> dict:
+    """Prepare data specifically for the model performance tab."""
+    if not engine_result:
+        return {}
+
+    summary = get_engine_performance_summary(engine_result)
+    scored = get_rich_scored_data_for_ui(engine_result)
+
+    return {
+        "summary": summary,
+        "scored_sample": scored.head(100) if not scored.empty else pd.DataFrame(),
+        "engine_results": engine_result.get("engine_results", {}),
+    }

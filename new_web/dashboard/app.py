@@ -2197,11 +2197,18 @@ def render_live_simulation(df, raw_df):
     simulation_df = st.session_state.get("simulation_features_override", df) if uploaded_override_active else df
     simulation_raw = st.session_state.get("simulation_raw_override", raw_df) if uploaded_override_active else raw_df
 
-    # If we have engine data available in session, prefer it for richer simulation
-    if not uploaded_override_active and st.session_state.get("engine_data") and "scored" in st.session_state["engine_data"]:
-        engine_sim = prepare_simulation_data_from_engine(st.session_state["engine_data"]["scored"])
-        if engine_sim is not None and len(engine_sim) > 0:
-            simulation_df = engine_sim
+    # Prefer the new clean adapter for simulation when engine data is present
+    if not uploaded_override_active and st.session_state.get("engine_data"):
+        try:
+            from shared.core.dashboard_adapters import prepare_simulation_from_engine
+            sim_data = prepare_simulation_from_engine(st.session_state["engine_data"], n_customers=6)
+            if "simulation_df" in sim_data and len(sim_data["simulation_df"]) > 0:
+                simulation_df = sim_data["simulation_df"]
+        except Exception:
+            # Fallback to older local helper
+            engine_sim = prepare_simulation_data_from_engine(st.session_state.get("engine_data", {}).get("scored"))
+            if engine_sim is not None and len(engine_sim) > 0:
+                simulation_df = engine_sim
 
     if uploaded_override_active:
         st.success(local_t["simulation"]["active_uploaded_info"])
