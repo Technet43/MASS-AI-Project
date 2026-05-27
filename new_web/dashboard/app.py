@@ -985,14 +985,13 @@ def load_synthetic_via_engine(n_customers: int = 2000, n_days: int = 180, preset
 
 
 def get_engine_metrics_and_df(engine_result: dict | None):
-    """Extract dashboard-compatible metrics + scored df from MassAIEngine result."""
+    """DEPRECATED - Use shared.core.dashboard_adapters instead."""
     if not engine_result or "scored" not in engine_result:
         return None, None
 
     scored = engine_result["scored"].copy()
     engine = engine_result.get("engine")
 
-    # Map engine columns to what the old dashboard expects
     if "risk_category" in scored.columns:
         scored["risk_level"] = scored["risk_category"].astype(str)
     if "risk_score" in scored.columns and "theft_probability" not in scored.columns:
@@ -1000,7 +999,6 @@ def get_engine_metrics_and_df(engine_result: dict | None):
     if "priority_index" in scored.columns:
         scored["priority"] = scored["priority_index"]
 
-    # Build a minimal metrics dict for the performance tab
     metrics = {
         "engine_mode": True,
         "best_model": engine_result.get("best_model", "Stacking Ensemble"),
