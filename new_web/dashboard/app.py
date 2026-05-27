@@ -1107,7 +1107,7 @@ def build_fallback_raw_data(features_df):
 def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 120, preset: str | None = None):
     """
     Main data loading entry point.
-    Strongly prefers the engine via adapters. Legacy CSV fallback is kept only for compatibility.
+    Strongly prefers the engine via adapters.
     """
     if use_engine:
         # Strongly prefer the new clean adapter from shared/core
