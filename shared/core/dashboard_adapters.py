@@ -154,6 +154,27 @@ def get_engine_scored_for_performance(engine_result: dict) -> dict:
     }
 
 
+def prepare_dashboard_data(engine_result: dict) -> dict:
+    """
+    High-level function that returns a ready-to-use dictionary for the main
+    dashboard tabs. This is the preferred way going forward.
+    """
+    if not engine_result:
+        return {"error": "No engine data"}
+
+    scored = get_rich_scored_data_for_ui(engine_result)
+    metrics = extract_metrics_from_engine(engine_result)
+    performance = get_engine_scored_for_performance(engine_result)
+
+    return {
+        "scored_df": scored,
+        "metrics": metrics,
+        "performance": performance,
+        "overview": engine_result.get("overview", {}),
+        "best_model": engine_result.get("best_model"),
+    }
+
+
 def get_scored_data_and_metrics(engine_result: dict) -> tuple:
     """
     One-stop helper that returns both the scored dataframe and metrics dict

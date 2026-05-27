@@ -1167,10 +1167,10 @@ def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 12
 @st.cache_data
 def run_models(features_df):
     """
-    LEGACY / DEPRECATED - Bu fonksiyon artık kullanılmamalıdır.
-    Yeni geliştirme için shared/core/dashboard_adapters.py içindeki fonksiyonları kullanın.
+    LEGACY / DEPRECATED - Bu fonksiyon kullanılmamalıdır.
+    Tüm yeni geliştirme için shared/core/dashboard_adapters.py kullanın.
     """
-    from sklearn.ensemble import IsolationForest, RandomForestClassifier
+    raise RuntimeError("run_models is deprecated. Use shared/core/dashboard_adapters instead.")
     from sklearn.metrics import (
         confusion_matrix,
         f1_score,
@@ -2523,23 +2523,24 @@ def main():
     used_engine = False
 
     if raw_df is None and isinstance(engine_data, dict):
-        # Clean modern path
+        # Clean modern path - use the high-level adapter
         try:
-            from shared.core.dashboard_adapters import get_scored_data_and_metrics
-            features_df, metrics = get_scored_data_and_metrics(engine_data)
+            from shared.core.dashboard_adapters import prepare_dashboard_data
+            prepared = prepare_dashboard_data(engine_data)
+            features_df = prepared.get("scored_df", pd.DataFrame())
+            metrics = prepared.get("metrics", {})
             used_engine = True
         except Exception:
             # Rare fallback
             features_df, raw_df = load_data(use_engine=False)
             features_df, metrics = run_models(features_df)
     else:
-        # Legacy / non-engine data path (will become less common)
+        # Legacy / non-engine data path
         if raw_df is None:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
         else:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
 
-        # Still attempt modern engine-based scoring
         try:
             from shared.core.dashboard_adapters import run_engine_based_scoring
             features_df, metrics = run_engine_based_scoring(engine_data if isinstance(engine_data, dict) else {})
