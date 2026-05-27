@@ -15,7 +15,6 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?logo=vercel&logoColor=white)](https://mass-ai-project.vercel.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 
 <br/>
 
@@ -27,53 +26,68 @@
 
 > **MASS AI** is a production-ready machine learning platform that detects electricity theft and consumption anomalies from smart meter data. Built for Turkey's MASS initiative (50 million smart meters by 2028), it targets regions where theft rates exceed **28%** — causing an estimated **₺10B+ in annual losses**.
 
-### Real Data Validation Status (May 2026)
-We have built a full production-grade integration layer for public electricity theft datasets (starting with SGCC, the global academic standard).
+---
+
+## Real Data Validation (May 2026)
+
+One of the most important improvements in 2026 was building a proper **real data validation layer**.
+
+We created a full production-grade integration for public electricity theft datasets (starting with SGCC, the most widely used academic benchmark).
 
 **Latest Benchmark Results:**
-- Synthetic (Turkey Urban): **AUC 0.999 | F1 0.97**
-- SGCC-style Realistic Proxy: **AUC 0.912 | F1 0.80**
-- **Measured Gap: ~0.087 AUC**
 
-This gap is now **quantified and transparent**. Full tooling, tests, and automated reports exist. See:
+| Dataset                    | AUC     | F1     |
+|---------------------------|---------|--------|
+| Synthetic (Turkey Urban)  | 0.999   | 0.97   |
+| SGCC-style Realistic Proxy| 0.912   | 0.80   |
+| **Measured Gap**          | **~0.087** | -    |
+
+This gap is now **measured and transparent**. We have complete tooling, automated reports, and clear documentation around it.
+
+See:
 - [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md)
-- [reports/real_data_validation_report.md](reports/real_data_validation_report.md)
 - `python scripts/benchmark_real_vs_synthetic.py`
 
-This directly addresses the #1 incubation concern ("only synthetic data").
+---
+
+## Current Architecture (2026)
+
+**Single Source of Truth:** `shared/core/` (MassAIEngine + dashboard_adapters)
+
+After a major modernization effort in 2026, the project now has a much cleaner structure:
+
+- `shared/core/` → The only place containing real ML logic, synthetic data generation, model training, and real data adapters.
+- `new_web/dashboard/` → Thin presentation layer (heavily cleaned and modernized).
+- `docs/` → Strong incubation and technical documentation.
+- `legacy/` → Old code moved here.
+
+The dashboard was significantly refactored (reduced from ~2570 lines to ~2135 lines), with most duplicated logic removed and moved to clean adapters.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/Feature_Catalog.md](docs/Feature_Catalog.md) for details.
 
 ---
 
-## Current Architecture & Status (May 2026)
+## Key Features
 
-**Single Source of Truth:** `shared/core/mass_ai_engine.py` + `shared/core/dashboard_adapters.py`
+| | Feature | Description |
+|---|---|---|
+| 🤖 | **6 ML Models** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting, LSTM Autoencoder + Stacking Ensemble |
+| 🔍 | **8 Theft Patterns** | Realistic Turkish consumption theft behaviors (night zeroing, bypass, tampering, etc.) |
+| 🧮 | **~40 Features** | Rich statistical, temporal, peer, and domain-specific features |
+| 📊 | **Real Data Validation** | Full SGCC-style benchmark with measured ~0.09 AUC gap |
+| 🗂️ | **Ops Center** | Case management with audit trail |
+| 🌐 | **Modern Web Dashboard** | Clean Streamlit UI (major 2026 modernization) |
+| ⚡ | **Synthetic + Real Data Engine** | Strong synthetic generator + production-ready real data support |
 
-The project has undergone a major professionalization and cleanup effort during an extended deep work session. Goal: **9.0+ technical quality + strong incubation readiness**.
-
-**Key Achievements in Recent Work:**
-- Heavy dashboard modernization (`new_web/dashboard/app.py` reduced from ~2570 → 2140 lines, massive removal of duplicated/legacy code)
-- Full real data integration layer for public datasets (SGCC benchmark) with measured generalization gap (~0.09 AUC)
-- Complete incubation materials package (Pitch Deck content, Business Model, Traction Plan, Real Data Validation Summary, Readiness Checklist)
-- 39 tests passing (strong coverage on core engine + adapters + real data)
-- All critical logic centralized in `shared/core/`
-- Legacy code moved to `legacy/`
-
-**Current Structure:**
-- `shared/core/` → Single source of truth (MassAIEngine + clean adapters)
-- `new_web/dashboard/` → Thin presentation layer (heavily modernized)
-- `docs/` → Rich incubation and technical documentation
-- `reports/` → Automated real data benchmark outputs
-
-See [ARCHITECTURE.md](ARCHITECTURE.md), [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md), and [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md) for details.
+**Current Focus:** Incubation preparation (İTÜ Çekirdek & Yıldız Teknik) with emphasis on real data transparency and code quality.
 
 ---
 
-## Development (Current Recommended Way)
+## Development (Recommended Way)
 
 ### Setup
 
 ```bash
-# Install the single source of truth dependencies
 pip install -r shared/requirements.txt
 ```
 
@@ -92,412 +106,52 @@ streamlit run new_web/dashboard/app.py
 ### Running Tests
 
 ```bash
-pip install pytest pytest-cov
-python -m pytest shared/tests/ -v --cov=shared/core --cov-report=term-missing
+python -m pytest shared/tests/ -v
 ```
 
-### Architecture Note
+---
 
-- **Single source of truth**: `shared/core/` (especially `mass_ai_engine.py`)
-- All new development should go through `shared/core/`
-- Legacy code has been moved to `legacy/`
-- The dashboard is gradually being migrated to use clean adapters from `shared/core/`
+## Incubation Materials (2026)
 
-**Data Model**: We maintain a rich feature set (~40 features) that goes beyond typical academic baselines (SGCC, etc.). See [docs/Feature_Catalog.md](docs/Feature_Catalog.md) for details and global comparison.
+During an extended deep work session in May 2026, the following professional materials were prepared:
 
-We are actively working to bring the project to 9.0+ across all quality dimensions while preparing strong applications for university incubation programs.
+- Full Pitch Deck Content
+- Business Model & Revenue Scenarios
+- Traction & Pilot Plan
+- Real Data Validation Summary
+- Incubation Readiness Checklist
+- Updated One Pager
 
-<br/>
+See [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md) for the full list.
+
+---
+
+## Current Status
+
+- **Code Quality:** Significantly improved (heavy dashboard modernization + architecture cleanup)
+- **Real Data:** Full tooling + measured benchmark results
+- **Tests:** 39 tests passing
+- **Documentation:** Strong incubation package ready
+
+The project is in a much cleaner and more professional state compared to early 2026.
+
+---
 
 ## React + Vercel Website
-
-The repository root includes a Vite React website deployed on Vercel:
 
 **Live site:** https://mass-ai-project.vercel.app/
 
 ```bash
 npm install
 npm run dev
-npm run build
 ```
-
-Vercel settings:
-
-- Framework Preset: `Vite`
-- Build Command: `npm run build`
-- Output Directory: `dist`
-
----
-
-## Screenshots
-
-| Overview Dashboard | Risk Distribution & Alerts |
-|---|---|
-| ![Overview dashboard](new_web/site/images/dashboard_overview_current.png) | ![Risk distribution and alerts](new_web/site/images/overview_risk_alerts_current.png) |
-
-| Time-Series Comparison | Statistical Comparison |
-|---|---|
-| ![Time-series comparison](new_web/site/images/comparison_timeseries_current.png) | ![Statistical comparison](new_web/site/images/comparison_statistics_current.png) |
-
-| Model Performance Curves | Confusion Matrices & Feature Importance |
-|---|---|
-| ![Model performance curves](new_web/site/images/performance_curves_current.png) | ![Confusion matrices and feature importance](new_web/site/images/performance_confusion_current.png) |
-
-| Customer Detail Review | Customer Feature Profile |
-|---|---|
-| ![Customer detail review](new_web/site/images/customer_detail_current.png) | ![Customer feature profile](new_web/site/images/customer_radar_current.png) |
-
-| Live Simulation Controls | Live Simulation Preview |
-|---|---|
-| ![Live simulation controls](new_web/site/images/live_simulation_controls_current.png) | ![Live simulation preview](new_web/site/images/live_simulation_preview_current.png) |
-
----
-
-## Key Features
-
-| | Feature | Description |
-|---|---|---|
-| 🤖 | **6 ML Models** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting, LSTM Autoencoder, Stacking Ensemble |
-| 🔍 | **8 Theft Patterns** | Meter tampering, cable bypass, peak clipping, gradual reduction, intermittent bypass, and more |
-| 🧮 | **~40 Features** | Rich statistical, temporal, peer, and domain-specific features (see Feature_Catalog.md) |
-| 📊 | **Real Data Validation** | Full SGCC-style benchmark with measured ~0.09 AUC gap (May 2026) |
-| 🗂️ | **Ops Center** | Case management with audit trail |
-| 🌐 | **Modern Web Dashboard** | Clean Streamlit UI (heavily modernized in 2026) |
-| ⚡ | **Synthetic + Real Data Engine** | Strong synthetic generator + production-ready real data mapper |
-
-**Current Focus:** Incubation preparation (İTÜ Çekirdek & Yıldız Teknik) with strong emphasis on real data transparency and code quality.
-
----
-
-## Model Performance
-
-### On Synthetic Data (Turkey Urban Preset)
-| Model | ROC-AUC | F1 | Type |
-|---|---|---|---|
-| Stacking Ensemble / XGBoost / RF | ~0.94–0.999 | High | Ensemble / Supervised |
-
-### Real Data Validation (May 2026)
-- Synthetic (in-distribution): **AUC 0.999**
-- SGCC-style Realistic Proxy: **AUC 0.912**
-- **Measured Domain Shift Gap: ~0.087 AUC**
-
-We treat this gap as a first-class, measured risk and have built full infrastructure to close it with actual utility data.
-
-See [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md) for the complete transparent report.
-
----
-
-## Models In Detail
-
-<details>
-<summary><b>🌲 Isolation Forest — Unsupervised Anomaly Detection</b></summary>
-<br/>
-
-Builds an ensemble of random decision trees. Anomalous customers are **isolated in fewer splits** because they occupy sparse, unusual regions of the feature space — the fewer splits needed, the higher the anomaly score.
-
-**Why it matters:** Requires **no labeled theft data** to train, making it deployable on day one of a smart meter rollout before any confirmed fraud cases exist.
-
-| | |
-|---|---|
-| ✅ **Strengths** | Label-free, fast, handles high-dimensional features, deployable immediately |
-| ⚠️ **Limitations** | Low F1 (0.26) when theft patterns overlap with legitimate low-consumption behavior |
-| 🎯 **Best used for** | Cold-start deployments, initial screening, regions with zero historical fraud labels |
-
-</details>
-
----
-
-<details>
-<summary><b>⚡ XGBoost — Extreme Gradient Boosting</b></summary>
-<br/>
-
-Builds trees sequentially where each new tree corrects the residual errors of the previous one. Uses **second-order gradient information** (Newton boosting) for faster convergence and stronger regularization than standard gradient boosting.
-
-Handles the class imbalance (88% normal / 12% theft) through `scale_pos_weight`. Produces native **feature importance scores** that directly answer: *"which consumption pattern drove this suspicion?"*
-
-| | |
-|---|---|
-| ✅ **Strengths** | High accuracy, built-in L1/L2 regularization, fast training, excellent feature importance |
-| ⚠️ **Limitations** | Requires labeled training data, less interpretable than a single decision tree |
-| 🎯 **Best used for** | Primary scoring engine when labeled historical fraud data is available |
-
-</details>
-
----
-
-<details>
-<summary><b>🌳 Random Forest — Supervised Ensemble Classifier</b></summary>
-<br/>
-
-Trains hundreds of decision trees on **random subsets of data and features** (bagging + feature randomness). Final prediction is a majority vote. The randomness reduces overfitting significantly compared to a single deep tree.
-
-Achieves the **highest standalone ROC-AUC (0.9461)** in this evaluation. Naturally robust to noisy features and outliers in consumption data.
-
-| | |
-|---|---|
-| ✅ **Strengths** | Robust to noise, reliable probability estimates, resistant to overfitting |
-| ⚠️ **Limitations** | Memory-heavy with many trees; needs class weighting for highly imbalanced data |
-| 🎯 **Best used for** | Reliable baseline scorer and cross-validation reference model |
-
-</details>
-
----
-
-<details>
-<summary><b>📈 Gradient Boosting — Sequential Error Correction</b></summary>
-<br/>
-
-Similar to XGBoost in principle but uses **first-order gradients** (classic scikit-learn implementation). Each tree is fit to the negative gradient of the loss function — progressively reducing prediction error with each stage.
-
-Provides a strong secondary classifier that behaves differently from XGBoost due to different regularization and split strategies, making it a valuable member of the stacking ensemble.
-
-| | |
-|---|---|
-| ✅ **Strengths** | Strong accuracy, well-understood behavior, good probability calibration |
-| ⚠️ **Limitations** | Slower to train than XGBoost, sensitive to learning rate and tree depth |
-| 🎯 **Best used for** | Ensemble diversity — its different error patterns complement XGBoost and Random Forest |
-
-</details>
-
----
-
-<details>
-<summary><b>🧠 LSTM Autoencoder — Deep Learning Time-Series Model</b></summary>
-<br/>
-
-A sequence-to-sequence neural network trained to **reconstruct normal consumption sequences**. Anomalies produce high reconstruction error because the model only learned what "normal" looks like — it was never shown theft patterns.
-
-```
-Input sequence (180 days × features)
-        │
-   LSTM Encoder  ──►  compressed latent vector
-        │
-   LSTM Decoder  ──►  reconstructed sequence
-        │
-Reconstruction Error  ──►  Anomaly Score
-```
-
-Operates directly on raw time-series **without handcrafted features**, detecting novel theft patterns not represented in the engineered feature set.
-
-| | |
-|---|---|
-| ✅ **Strengths** | No feature engineering required, detects novel/unseen patterns, models temporal dependencies naturally |
-| ⚠️ **Limitations** | Requires TensorFlow, more compute, harder to explain to field analysts (ROC-AUC: 0.748) |
-| 🎯 **Best used for** | Secondary validation signal, detecting pattern-drifted or novel fraud types |
-
-</details>
-
----
-
-<details>
-<summary><b>🏆 Stacking Ensemble — Meta-Learner (Default Production Model)</b></summary>
-<br/>
-
-A two-layer system. In **Layer 1**, all five models independently score each customer. In **Layer 2**, a Logistic Regression meta-learner is trained on those five scores — learning *how to weight and combine* each model's judgment.
-
-```
-Layer 1 — Base Models:
-  Isolation Forest  ──►  score_1  ┐
-  XGBoost           ──►  score_2  │
-  Random Forest     ──►  score_3  ├──►  Meta-Learner  ──►  Final Risk Score
-  Gradient Boosting ──►  score_4  │     (Logistic Regression)
-  LSTM Autoencoder  ──►  score_5  ┘
-```
-
-Compensates for each model's individual weaknesses. When Isolation Forest is uncertain but XGBoost and Random Forest both flag a customer, the meta-learner still produces a high risk score.
-
-| | |
-|---|---|
-| ✅ **Strengths** | Best overall performance (F1: 0.8727, AP: 0.9004), robust to individual model failures |
-| ⚠️ **Limitations** | All base models must be trained and loaded; adds latency vs single-model inference |
-| 🎯 **Best used for** | **Production scoring** — this is the default model in the desktop app and dashboard |
-
-</details>
-
----
-
-## Architecture
-
-The platform turns raw smart meter readings into operational decisions through a layered detection pipeline:
-
-- Input layer: raw CSV, uploaded meter exports, or already scored customer records
-- Intelligence layer: feature engineering plus supervised, unsupervised, and sequence-based models
-- Action layer: risk scoring, theft-pattern classification, and Ops Center case handling
-
-```mermaid
-flowchart TD
-    A["Smart Meter Data<br/>raw CSV or pre-scored records"] --> B["Feature Engineering<br/>20+ statistical, temporal, and anomaly features"]
-
-    B --> B1["Statistical Signals<br/>mean, std, skewness, kurtosis"]
-    B --> B2["Temporal Signals<br/>night/day ratio, peak hour, weekday vs weekend"]
-    B --> B3["Anomaly Signals<br/>zero rate, sudden change ratio, trend slope"]
-
-    B1 --> C
-    B2 --> C
-    B3 --> C
-
-    subgraph C["Model Ensemble"]
-        C1["Isolation Forest"]
-        C2["XGBoost"]
-        C3["Random Forest"]
-        C4["Gradient Boosting"]
-        C5["LSTM Autoencoder"]
-        C6["Stacking Meta-Learner"]
-        C1 --> C6
-        C2 --> C6
-        C3 --> C6
-        C4 --> C6
-        C5 --> C6
-    end
-
-    C --> D["Risk Score<br/>Theft Pattern Classification"]
-    D --> E["Ops Center<br/>Case Management and Audit Trail"]
-```
-
-| Layer | Role |
-|---|---|
-| **Data Intake** | Collects smart meter readings from generated samples, CSV uploads, or pre-scored records |
-| **Feature Pipeline** | Converts raw usage history into compact signals that models can compare consistently |
-| **Model Stack** | Combines anomaly detection, classification, and sequence modeling for stronger decisions |
-| **Operations Output** | Produces a risk score and theft context that can be escalated into analyst workflows |
-
----
-
-## Synthetic Dataset
-
-The built-in data engine generates realistic Turkish smart meter data with no external dataset required.
-
-| Parameter | Value |
-|---|---|
-| Customers | 2,000 |
-| Duration | 180 days |
-| Reading Interval | 15 minutes |
-| Theft Rate | 12% |
-| Customer Profiles | Residential 70% · Commercial 20% · Industrial 10% |
-| Regional Presets | Metro · Coastal · Plateau · Rural |
-
-**8 Theft Patterns Simulated:**
-
-| Pattern | Simulates |
-|---|---|
-| `constant_reduction` | Uniform consumption drop — meter tampering |
-| `night_zeroing` | Zero readings at night — cable bypass |
-| `random_zeros` | Sporadic zero readings — intermittent bypass |
-| `gradual_decrease` | Slow monthly reduction — progressive theft |
-| `peak_clipping` | Peak consumption cutoff — current limiter device |
-| `weekend_masking` | Weekend anomalies — retail bypass |
-| `intermittent_bypass` | Short-cycle bypass activity |
-| `tamper_spikes` | Sudden high-value spikes — meter manipulation |
-
----
-
-## Current Project Structure (Refactored Direction)
-
-**Source of truth for ML logic:** `shared/core/mass_ai_engine.py` (MassAIEngine with 6 models + stacking + excellent Turkish synthetic generator).
-
-**Important (2026 update):**
-- **Active refactoring in progress**: The Streamlit dashboard is being migrated to use `shared/core/mass_ai_engine.py` as the single source of truth.
-  - load_data now prefers MassAIEngine
-  - Performance tab, sidebar status, and preset regeneration are wired to the engine
-  - Goal: Turn the 2400+ line dashboard file into a thin UI layer
-- Old duplicated code in `project/legacy_pipeline` and older sections should be treated as historical/research only.
-
-```
-MASS-AI-Project/
-├── MASS_AI_LAUNCHER.py          # Glassmorphism launcher (recommended entry)
-├── shared/
-│   ├── core/                    # ← CURRENT SOURCE OF TRUTH
-│   │   ├── mass_ai_engine.py    # MassAIEngine (real engine)
-│   │   ├── ops_store.py
-│   │   └── ...
-│   ├── data/
-│   └── tests/
-├── old_desktop/                 # Tkinter desktop analyst app (uses shared/core)
-├── new_web/
-│   ├── dashboard/app.py         # Streamlit (migrating to shared/core)
-│   └── site/                    # Static marketing site
-├── src/                         # React sources for the Vercel landing page
-├── docs/
-└── various launch scripts + requirements files
-```
-
-**Recommended way to run:**
-- Use `MASS_AI_LAUNCHER.py` (best experience)
-- Or directly: Streamlit → `streamlit run new_web/dashboard/app.py` (after pip install -r shared/requirements.txt)
-
----
-
-## Quick Start
-
-```bash
-# 1 — Clone
-git clone https://github.com/Technet43/MASS-AI-Project.git
-cd MASS-AI-Project
-
-# 2 — Install (Windows one-click)
-INSTALL_REQUIREMENTS.bat
-
-# 2 — Install (manual)
-pip install -r project/requirements-full.txt   # full stack
-pip install -r project/requirements-desktop.txt  # desktop only
-
-# 3 — Launch
-START_MASS_AI.bat                              # unified launcher
-streamlit run project/dashboard/app.py         # web dashboard only
-python project/legacy_pipeline/run_pipeline.py --quick  # research pipeline
-```
-
----
-
-## Requirements
-
-| Package | Version | Purpose |
-|---|---|---|
-| Python | 3.10+ | Runtime |
-| scikit-learn | 1.3+ | Core ML models |
-| xgboost | 2.0+ | Gradient boosting |
-| numpy | 1.24+ | Numerical computing |
-| pandas | 2.0+ | Data processing |
-| matplotlib | 3.7+ | Desktop charts |
-| streamlit | 1.30+ | Web dashboard |
-| plotly | 5.18+ | Interactive charts |
-| tensorflow | 2.15+ | LSTM Autoencoder |
-| shap | 0.43+ | Model explainability |
-| openpyxl | 3.1+ | Excel export |
-
----
-
-## Roadmap
-
-- [x] Synthetic data generation (2,000 customers × 180 days)
-- [x] Isolation Forest, XGBoost, Random Forest, Gradient Boosting
-- [x] LSTM Autoencoder for time-series anomaly detection
-- [x] Stacking Ensemble + SHAP explainability
-- [x] Streamlit Dashboard v2.0 (5 tabs + regional map)
-- [x] Desktop Analyst App with Ops Center (SQLite)
-- [x] Executive brief generation (HTML/text)
-- [x] PyInstaller packaging for Windows
-- [ ] Real dataset integration (SGCC, London Smart Meter)
-- [ ] 1D-CNN voltage anomaly classification
-- [ ] ESP32 + CT sensor hardware prototype
-- [ ] REST API for utility company integration
-
----
-
-## Context
-
-Turkey's TEDAŞ and BAŞKENTEDAŞ distribution companies face **28%+ electricity theft rates** in some regions, causing an estimated **₺10B+ in annual losses**. The MASS initiative — 50 million smart meters by 2028 — will generate massive time-series data streams requiring automated anomaly detection at scale. This project demonstrates a viable end-to-end ML architecture for that challenge.
-
----
-
-## Author
-
-**Ömer Burak Koçak**  
-Electrical-Electronics Engineering · Marmara University · Class of 2026  
-[kocakomerburak075@gmail.com](mailto:kocakomerburak075@gmail.com)
 
 ---
 
 ## License
 
-[MIT License](LICENSE) — free to use, modify, and distribute with attribution.
+MIT License
+
+---
+
+*Last major update: May 2026 (during extended deep work & incubation preparation session)*
