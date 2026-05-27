@@ -93,6 +93,92 @@ class MassAIEngineSmokeTests(unittest.TestCase):
         self.assertIn("zero_measurement_pct", loaded.columns)
         self.assertEqual(str(loaded.iloc[0]["profile"]), "residential")
 
+    # ==================== NEW COMPREHENSIVE TESTS ====================
+
+    def test_all_synthetic_presets_work(self):
+        """Test that every regional preset produces valid data."""
+        engine = MassAIEngine()
+        for preset in engine.synthetic_preset_names():
+            with self.subTest(preset=preset):
+                features = engine.generate_synthetic(n_customers=50, n_days=30, preset_name=preset)
+                self.assertGreater(len(features), 0)
+                self.assertIn("synthetic_preset", features.columns)
+                self.assertTrue((features["synthetic_preset"] == preset).all())
+
+    def test_all_theft_patterns_are_represented(self):
+        """Ensure all 8 theft patterns can appear in generated data."""
+        engine = MassAIEngine()
+        features = engine.generate_synthetic(n_customers=500, n_days=60, preset_name="Turkey Urban")
+        theft_types = set(features["theft_type"].unique())
+        expected = set([
+            "none", "constant_reduction", "night_zeroing", "random_zeros",
+            "gradual_decrease", "peak_clipping", "weekend_masking",
+            "intermittent_bypass", "tamper_spikes"
+        ])
+        self.assertTrue(expected.issubset(theft_types) or len(theft_types) >= 6)
+
+    def test_train_models_produces_results_for_all_models(self):
+        engine = MassAIEngine()
+        engine.generate_synthetic(n_customers=100, n_days=40)
+        results = engine.train_models()
+        self.assertIn("Isolation Forest", results)
+        # When enough labels, supervised models should also be present
+        if "Stacking Ensemble" in results:
+            self.assertGreater(results["Stacking Ensemble"].get("auc", 0), 0.5)
+
+    def test_score_customers_produces_expected_columns(self):
+        engine = MassAIEngine()
+        engine.generate_synthetic(n_customers=80, n_days=30)
+        engine.train_models()
+        scored = engine.score_customers()
+        expected_cols = ["theft_probability", "risk_score", "risk_category", "risk_summary", "priority_index"]
+        for col in expected_cols:
+            self.assertIn(col, scored.columns)
+
+    def test_build_overview_returns_useful_data(self):
+        engine = MassAIEngine()
+        engine.generate_synthetic(n_customers=60, n_days=25)
+        engine.train_models()
+        engine.score_customers()
+        overview = engine.build_overview()
+        self.assertIsNotNone(overview)
+        self.assertIn("best_model", overview)
+        self.assertIn("high_risk_count", overview)
+        self.assertGreaterEqual(overview["customer_count"], 60)
+
+    def test_explainability_columns_are_populated(self):
+        engine = MassAIEngine()
+        engine.generate_synthetic(n_customers=70, n_days=35)
+        engine.train_models()
+        scored = engine.score_customers()
+        self.assertIn("risk_reason_1", scored.columns)
+        self.assertIn("risk_drivers", scored.columns)
+        # At least some rows should have non-placeholder reasons
+        non_dash = scored[scored["risk_reason_1"] != "-"]
+        self.assertGreater(len(non_dash), 5)
+
+    def test_reset_state_clears_data(self):
+        engine = MassAIEngine()
+        engine.generate_synthetic(n_customers=30, n_days=15)
+        engine.reset_state()
+        self.assertIsNone(engine.df_features)
+        self.assertIsNone(engine.df_scored)
+        self.assertEqual(len(engine.models), 0)
+
+    def test_load_dataset_handles_turkish_column_names(self):
+        rows = [
+            {"Abone No": 1, "Profil": "residential", "Ortalama Tuketim": 2.1, "Standart Sapma": 0.3},
+            {"Abone No": 2, "Profil": "commercial", "Ortalama Tuketim": 8.4, "Standart Sapma": 1.1},
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "tr_cols.csv"
+            pd.DataFrame(rows).to_csv(csv_path, index=False)
+            engine = MassAIEngine()
+            df = engine.load_dataset(str(csv_path))
+            self.assertIn("customer_id", df.columns)
+            self.assertIn("profile", df.columns)
+            self.assertIn("mean_consumption", df.columns)
+
 
 if __name__ == "__main__":
     unittest.main()

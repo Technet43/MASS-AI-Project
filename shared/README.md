@@ -2,6 +2,18 @@
 
 This is the **recommended and actively maintained** Python core for MASS-AI.
 
+## For Dashboard / UI Developers
+
+Prefer using helpers from `shared/core/dashboard_adapters.py` instead of duplicating logic inside `new_web/dashboard/app.py`.
+
+Example:
+```python
+from shared.core.dashboard_adapters import load_synthetic_data_via_engine
+data = load_synthetic_data_via_engine(preset="Industrial Theft Sweep")
+```
+
+The long-term goal is to make `new_web/dashboard/app.py` a thin presentation layer.
+
 ## Current Recommended Structure (2026)
 
 - `shared/core/`

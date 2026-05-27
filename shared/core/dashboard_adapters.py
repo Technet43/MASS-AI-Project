@@ -1,0 +1,72 @@
+"""
+Dashboard Adapters
+
+Thin helpers that the Streamlit dashboard (and future UIs) can use
+to interact with MassAIEngine without duplicating logic.
+
+Goal: Keep the dashboard as a pure presentation layer.
+"""
+
+from typing import Any, Dict, Optional
+
+import pandas as pd
+
+from .mass_ai_engine import MassAIEngine
+
+
+def get_engine() -> Optional[MassAIEngine]:
+    """Cached engine instance for dashboard use."""
+    # In a real app you might use Streamlit session_state here.
+    # For now we return a fresh one (callers can cache).
+    try:
+        return MassAIEngine()
+    except Exception:
+        return None
+
+
+def load_synthetic_data_via_engine(
+    n_customers: int = 1500,
+    n_days: int = 120,
+    preset: Optional[str] = None
+) -> Dict[str, Any]:
+    """Preferred way for the dashboard to get rich scored data."""
+    engine = get_engine()
+    if engine is None:
+        return {"error": "Engine unavailable"}
+
+    try:
+        features = engine.generate_synthetic(
+            n_customers=n_customers,
+            n_days=n_days,
+            preset_name=preset
+        )
+        engine.train_models()
+        scored = engine.score_customers()
+        overview = engine.build_overview() or {}
+
+        return {
+            "features": features,
+            "scored": scored,
+            "overview": overview,
+            "best_model": overview.get("best_model", "Stacking Ensemble"),
+            "engine": engine,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def prepare_for_simulation(engine_scored_df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize engine output so the simulation code can consume it easily."""
+    if engine_scored_df is None or engine_scored_df.empty:
+        return pd.DataFrame()
+
+    df = engine_scored_df.copy()
+
+    # Ensure columns the old simulation code expects
+    if "theft_probability" not in df.columns and "risk_score" in df.columns:
+        df["theft_probability"] = df["risk_score"] / 100.0
+
+    if "risk_level" not in df.columns and "risk_category" in df.columns:
+        df["risk_level"] = df["risk_category"].astype(str)
+
+    return df

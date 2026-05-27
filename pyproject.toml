@@ -1,0 +1,16 @@
+[tool.pytest.ini_options]
+testpaths = ["shared/tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["shared/core"]
+omit = ["*/tests/*", "*/legacy/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
