@@ -746,13 +746,13 @@ def find_first_matching_column(columns, aliases):
 
 def normalize_uploaded_raw_data(uploaded_df):
     """
-    Normalize uploaded CSV data into the dashboard's internal raw-data schema.
-
-    Expected canonical columns after normalization:
-    - customer_id
-    - timestamp
-    - consumption_kw
-    - profile
+    LEGACY / DEPRECATED
+    Use shared/core/dashboard_adapters or engine methods instead.
+    """
+    raise RuntimeError(
+        "normalize_uploaded_raw_data is deprecated. "
+        "Use shared/core/dashboard_adapters instead."
+    )
     """
     timestamp_col = find_first_matching_column(
         uploaded_df.columns,
@@ -903,7 +903,14 @@ def score_uploaded_features(reference_features_df, uploaded_features_df):
 
 
 def build_simulation_customer_pool(simulation_df, selected_customer_id, n_customers):
-    """Build the set of customers shown in live simulation while keeping the selected customer first."""
+    """
+    LEGACY / DEPRECATED
+    Simulation logic should prefer the new adapter helpers.
+    """
+    raise RuntimeError(
+        "build_simulation_customer_pool is deprecated. "
+        "Use shared/core/dashboard_adapters instead."
+    )
     selected_customer = simulation_df[simulation_df["customer_id"] == selected_customer_id].iloc[0]
     remaining_customers = simulation_df[simulation_df["customer_id"] != selected_customer_id].copy()
 
@@ -930,16 +937,19 @@ t = get_translations()
 
 
 def get_engine() -> "MassAIEngine | None":
-    """Get or create a MassAIEngine instance (cached in session state)."""
-    if not ENGINE_AVAILABLE or MassAIEngine is None:
-        return None
-    if "mass_engine" not in st.session_state:
-        st.session_state.mass_engine = MassAIEngine()
-    return st.session_state.mass_engine
+    """
+    LEGACY / DEPRECATED
+    Use shared.core.dashboard_adapters.get_engine instead.
+    """
+    raise RuntimeError("get_engine is deprecated. Use shared/core/dashboard_adapters instead.")
 
 
 def load_synthetic_via_engine(n_customers: int = 2000, n_days: int = 180, preset: str | None = None):
-    """Preferred path: Use the real shared MassAIEngine for synthetic data + training."""
+    """
+    LEGACY / DEPRECATED
+    Use shared.core.dashboard_adapters.load_synthetic_data_via_engine instead.
+    """
+    raise RuntimeError("load_synthetic_via_engine is deprecated. Use shared/core/dashboard_adapters instead.")
     engine = get_engine()
     if engine is None:
         return None, "Engine not available - falling back to legacy in-file implementation"
