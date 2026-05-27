@@ -166,6 +166,7 @@ class MassAIEngineSmokeTests(unittest.TestCase):
         self.assertEqual(len(engine.models), 0)
 
     def test_load_dataset_handles_turkish_column_names(self):
+        import pandas as pd
         rows = [
             {"Abone No": 1, "Profil": "residential", "Ortalama Tuketim": 2.1, "Standart Sapma": 0.3},
             {"Abone No": 2, "Profil": "commercial", "Ortalama Tuketim": 8.4, "Standart Sapma": 1.1},

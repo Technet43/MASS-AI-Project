@@ -27,6 +27,47 @@
 
 > **MASS AI** is a production-ready machine learning platform that detects electricity theft and consumption anomalies from smart meter data. Built for Turkey's MASS initiative (50 million smart meters by 2028), it targets regions where theft rates exceed **28%** — causing an estimated **₺10B+ in annual losses**.
 
+---
+
+## Current Architecture (2026 Target State)
+
+**Single Source of Truth:** `shared/core/mass_ai_engine.py`
+
+The project is currently undergoing a major cleanup and professionalization effort with the goal of reaching **9.0+ in every evaluation category**.
+
+- `shared/core/` → The only place containing real ML logic, synthetic data generation, and model training (6 models + stacking ensemble).
+- `new_web/dashboard/` → Being migrated to a thin UI layer that consumes the engine.
+- Everything else (`project/`, old duplicated code) is being moved to `legacy/`.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+
+---
+
+## Development
+
+### Setup
+
+```bash
+# Recommended
+pip install -r shared/requirements.txt
+
+# Run the nice launcher
+python MASS_AI_LAUNCHER.py
+
+# Or run the Streamlit dashboard directly
+streamlit run new_web/dashboard/app.py
+```
+
+### Running Tests
+
+```bash
+pip install pytest pytest-cov
+cd shared
+python -m pytest tests/ -v --cov=core --cov-report=term-missing
+```
+
+We are actively working toward high test coverage and clean architecture. See the plan in the session notes if you're contributing to the 9+ quality push.
+
 <br/>
 
 ## React + Vercel Website

@@ -1142,10 +1142,24 @@ def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 12
     or the user explicitly wants the legacy dataset.
     """
     if use_engine:
+        # Prefer the new clean adapter from shared/core
+        try:
+            from shared.core.dashboard_adapters import load_synthetic_data_via_engine
+            result = load_synthetic_data_via_engine(n_customers=n_customers, n_days=n_days, preset=preset)
+            if "scored" in result:
+                scored = result["scored"].copy()
+                if "risk_level" not in scored.columns and "risk_category" in scored.columns:
+                    scored["risk_level"] = scored["risk_category"].astype(str)
+                if "anomaly_score" not in scored.columns and "risk_score" in scored.columns:
+                    scored["anomaly_score"] = scored["risk_score"]
+                return scored, None
+        except Exception:
+            pass  # fall through to old implementation or legacy path
+
+        # Fallback to previous local implementation if adapter not available yet
         result, error = load_synthetic_via_engine(n_customers=n_customers, n_days=n_days, preset=preset)
         if result is not None and "scored" in result:
             scored = result["scored"].copy()
-            # Ensure columns the dashboard expects
             if "risk_level" not in scored.columns and "risk_category" in scored.columns:
                 scored["risk_level"] = scored["risk_category"].astype(str)
             if "anomaly_score" not in scored.columns and "risk_score" in scored.columns:
