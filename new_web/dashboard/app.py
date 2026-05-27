@@ -1259,6 +1259,14 @@ def render_sidebar(features_df):
 
     prob_threshold = st.sidebar.slider(local_t["threshold_filter"], 0.0, 1.0, 0.5, 0.05)
 
+    # Engine preset selector (leverages the strong synthetic presets in shared/core)
+    engine = get_engine()
+    if engine is not None and ENGINE_AVAILABLE:
+        preset_options = ["Turkey Urban", "Industrial Theft Sweep", "Mixed Retail Anomalies", "Rural Meter Drift"]
+        selected_preset = st.sidebar.selectbox("Sentetik Veri Preseti (Engine)", preset_options, index=0)
+    else:
+        selected_preset = None
+
     filtered = features_df[
         (features_df["profile"].isin(profile_filter))
         & (features_df["risk_level"].isin(risk_filter))
