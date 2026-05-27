@@ -1,6 +1,10 @@
-# Project Layout
+# Project Layout (Legacy / Historical)
 
-This folder is organized around the two MASS-AI app versions plus a shared core.
+**Note (2026):** The actively maintained core has moved to `../shared/core/`.
+
+This folder contains older/legacy versions and is kept for reference only.
+
+The real engine is now in `shared/core/mass_ai_engine.py`.
 
 ## Main Folders
 
