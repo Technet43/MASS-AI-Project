@@ -168,6 +168,28 @@ def get_scored_data_and_metrics(engine_result: dict) -> tuple:
     return scored, metrics
 
 
+def run_engine_based_scoring(engine_result: dict) -> tuple:
+    """
+    Modern replacement for the old duplicated `run_models` logic.
+    When we have engine data, we use the real models and results instead of
+    re-training simple RF + Isolation Forest inside the dashboard.
+    """
+    if not engine_result or "scored" not in engine_result:
+        return pd.DataFrame(), {}
+
+    scored = get_rich_scored_data_for_ui(engine_result)
+    metrics = extract_metrics_from_engine(engine_result)
+
+    # Ensure columns that old dashboard code expects
+    if "theft_probability" not in scored.columns and "risk_score" in scored.columns:
+        scored["theft_probability"] = scored["risk_score"] / 100.0
+
+    if "risk_level" not in scored.columns and "risk_category" in scored.columns:
+        scored["risk_level"] = scored["risk_category"].astype(str)
+
+    return scored, metrics
+
+
 def extract_metrics_from_engine(engine_result: dict) -> dict:
     """
     Converts engine result into the metrics format expected by the current

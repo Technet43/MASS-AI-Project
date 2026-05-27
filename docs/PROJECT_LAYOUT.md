@@ -19,12 +19,13 @@ This workspace is organized around a shared core plus two app versions: the old 
 - `images/`: screenshots and visual assets
 - `business_docs/`: business-facing files and archived papers
 
-## Project Folder
+## Legacy Note (2026)
 
-- `project/core/`: shared engine, metadata, persistence, and helper modules
-- `project/old_desktop/`: first Tkinter desktop version
-- `project/new_web/`: newer Streamlit web version
-- `project/archive/`: archived research code outside the main app flow
+Most of the old `project/` structure has been moved to `../legacy/`.
+
+The current recommended structure is documented in `ARCHITECTURE.md` at the root.
+
+The information below is kept only for historical reference.
 
 ## Organized Subfolders
 

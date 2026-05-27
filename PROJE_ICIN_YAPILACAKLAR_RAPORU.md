@@ -14,7 +14,7 @@ Hazırlanma tarihi: 2026-04-16
 - `C:\Users\kocak\Downloads\Akıllı Sayaç Verisi Analizi.pdf`
 - repo branch: `codex/update-dashboard-and-realtime-ingest`
 - kod tabanı: `README.md`, `project/dashboard/app.py`, `project/mass_ai_engine.py`, `project/realtime_ingest/*`, `project/ops_store.py`
-- doğrulama: `python -m unittest discover project/tests -v` sonucu 13 test geçti
+- doğrulama: (eski) `python -m unittest discover project/tests -v` sonucu 13 test geçti → Artık testler `shared/tests/` altındadır.
 
 ---
 

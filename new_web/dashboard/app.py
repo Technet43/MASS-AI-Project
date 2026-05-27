@@ -1295,6 +1295,11 @@ def render_sidebar(features_df):
     # Show when we're using the real shared engine (ongoing anti-duplication effort)
     if ENGINE_AVAILABLE and get_engine() is not None:
         st.sidebar.success("✓ Advanced Engine active (shared/core)", icon="🚀")
+        # Show quick engine stats if available
+        if st.session_state.get("engine_data"):
+            overview = st.session_state["engine_data"].get("overview", {})
+            if overview.get("high_risk_count"):
+                st.sidebar.caption(f"High risk: {overview.get('high_risk_count')} | Best model: {st.session_state['engine_data'].get('best_model', 'Engine')}")
     else:
         st.sidebar.warning("Using legacy in-file models", icon="⚠️")
 
@@ -2531,14 +2536,24 @@ def main():
                 used_engine = True
             else:
                 features_df, raw_df = load_data(use_engine=False)
-                features_df, metrics = run_models(features_df)
+                # Try to use engine-based scoring even in fallback
+                try:
+                    from shared.core.dashboard_adapters import run_engine_based_scoring
+                    features_df, metrics = run_engine_based_scoring(engine_data if isinstance(engine_data, dict) else {})
+                except Exception:
+                    features_df, metrics = run_models(features_df)
     else:
         # Legacy path
         if raw_df is None:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
         else:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
-        features_df, metrics = run_models_prefer_engine(features_df, engine_result=engine_data if isinstance(engine_data, dict) else None)
+        # Prefer engine-based path even in legacy branch
+        try:
+            from shared.core.dashboard_adapters import run_engine_based_scoring
+            features_df, metrics = run_engine_based_scoring(engine_data if isinstance(engine_data, dict) else {})
+        except Exception:
+            features_df, metrics = run_models_prefer_engine(features_df, engine_result=engine_data if isinstance(engine_data, dict) else None)
     filtered_df, threshold = render_sidebar(features_df)
     local_t = get_translations()
 

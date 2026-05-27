@@ -98,6 +98,22 @@ class TestDashboardAdapters(unittest.TestCase):
         self.assertIn("risk_level", scored.columns)
         self.assertTrue(metrics.get("engine_mode"))
 
+    def test_run_engine_based_scoring_produces_expected_columns(self):
+        from dashboard_adapters import run_engine_based_scoring
+        fake_result = {
+            "scored": pd.DataFrame({
+                "customer_id": [1, 2],
+                "risk_score": [85, 30],
+                "risk_category": ["high", "low"]
+            }),
+            "best_model": "Stacking Ensemble",
+            "overview": {"high_risk_count": 5}
+        }
+        scored, metrics = run_engine_based_scoring(fake_result)
+        self.assertIn("theft_probability", scored.columns)
+        self.assertIn("risk_level", scored.columns)
+        self.assertTrue(metrics.get("engine_mode"))
+
 
 if __name__ == "__main__":
     unittest.main()
