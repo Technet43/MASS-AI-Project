@@ -11,7 +11,16 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from .mass_ai_engine import MassAIEngine
+# Robust import that works both when run as part of package and in tests
+try:
+    from .mass_ai_engine import MassAIEngine
+except ImportError:
+    import sys
+    from pathlib import Path
+    CORE_DIR = Path(__file__).resolve().parent
+    if str(CORE_DIR) not in sys.path:
+        sys.path.insert(0, str(CORE_DIR))
+    from mass_ai_engine import MassAIEngine
 
 
 def get_engine() -> Optional[MassAIEngine]:
