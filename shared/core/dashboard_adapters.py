@@ -235,3 +235,72 @@ def extract_metrics_from_engine(engine_result: dict) -> dict:
         metrics["engine_results"] = engine_obj.results
 
     return metrics
+
+
+def initialize_live_simulation_state(
+    sim_customers: pd.DataFrame,
+    simulation_raw: pd.DataFrame,
+    sim_points: int
+) -> dict:
+    """
+    Pure data preparation helper for the live simulation animation.
+    Builds the per-customer buffer structures needed for the step-by-step
+    Plotly animation without any UI or Streamlit code.
+
+    This replaces the duplicated inline dict building that was inside app.py.
+    """
+    if sim_customers is None or sim_customers.empty or simulation_raw is None:
+        return {"customer_data": {}, "error": "Insufficient data for simulation"}
+
+    customer_data = {}
+    for _, customer in sim_customers.iterrows():
+        customer_id = customer["customer_id"]
+        customer_raw = simulation_raw[
+            simulation_raw["customer_id"] == customer_id
+        ].head(sim_points)
+
+        customer_data[customer_id] = {
+            "values": customer_raw["consumption_kw"].values if not customer_raw.empty else np.array([]),
+            "label": int(customer.get("predicted_theft", customer.get("label", 0))),
+            "profile": customer.get("profile", "residential"),
+            "buffer_x": [],
+            "buffer_y": [],
+        }
+
+    return {"customer_data": customer_data}
+
+
+def build_simulation_customer_pool(
+    simulation_df: pd.DataFrame,
+    selected_customer_id,
+    n_customers: int = 5
+) -> pd.DataFrame:
+    """
+    Clean replacement for the old deprecated build_simulation_customer_pool.
+    Selects a pool of customers for the live simulation view, prioritizing
+    the selected customer and then highest-risk or other interesting ones.
+
+    This lives in the adapter layer so the dashboard stays thin.
+    """
+    if simulation_df is None or simulation_df.empty:
+        return pd.DataFrame()
+
+    df = simulation_df.copy()
+
+    # Ensure we have the selected customer
+    selected = df[df["customer_id"] == selected_customer_id]
+    others = df[df["customer_id"] != selected_customer_id]
+
+    # Sort others by risk if available
+    if "theft_probability" in others.columns:
+        others = others.sort_values("theft_probability", ascending=False)
+    elif "risk_score" in others.columns:
+        others = others.sort_values("risk_score", ascending=False)
+
+    pool = pd.concat([selected, others.head(max(n_customers - 1, 0))])
+
+    # If still too small, just take head
+    if len(pool) < n_customers:
+        pool = df.head(n_customers)
+
+    return pool.reset_index(drop=True)

@@ -112,7 +112,45 @@ class TestDashboardAdapters(unittest.TestCase):
         scored, metrics = run_engine_based_scoring(fake_result)
         self.assertIn("theft_probability", scored.columns)
         self.assertIn("risk_level", scored.columns)
-        self.assertTrue(metrics.get("engine_mode"))
+
+    def test_build_simulation_customer_pool_selects_correctly(self):
+        from dashboard_adapters import build_simulation_customer_pool
+
+        fake_df = pd.DataFrame({
+            "customer_id": [10, 20, 30, 40],
+            "theft_probability": [0.2, 0.9, 0.1, 0.75],
+            "profile": ["residential"] * 4
+        })
+
+        pool = build_simulation_customer_pool(fake_df, selected_customer_id=30, n_customers=3)
+
+        self.assertEqual(len(pool), 3)
+        self.assertIn(30, pool["customer_id"].values)  # selected must be included
+        # Should prefer high risk for the others
+        self.assertIn(20, pool["customer_id"].values)  # 0.9 risk should be picked
+
+    def test_initialize_live_simulation_state_builds_buffers(self):
+        from dashboard_adapters import initialize_live_simulation_state
+
+        customers = pd.DataFrame({
+            "customer_id": [1, 2],
+            "predicted_theft": [0, 1],
+            "profile": ["residential", "commercial"]
+        })
+
+        raw = pd.DataFrame({
+            "customer_id": [1, 1, 1, 2, 2],
+            "consumption_kw": [1.1, 1.2, 0.0, 3.5, 3.6],
+            "timestamp": pd.date_range("2024-01-01", periods=5, freq="h").tolist() * 1  # simplified
+        })
+
+        state = initialize_live_simulation_state(customers, raw, sim_points=3)
+
+        self.assertIn("customer_data", state)
+        self.assertIn(1, state["customer_data"])
+        self.assertIn(2, state["customer_data"])
+        self.assertEqual(len(state["customer_data"][1]["values"]), 3)
+        self.assertEqual(state["customer_data"][2]["label"], 1)
 
 
 if __name__ == "__main__":

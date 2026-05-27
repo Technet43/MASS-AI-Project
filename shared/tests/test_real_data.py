@@ -105,5 +105,41 @@ class TestRealDataBenchmark(unittest.TestCase):
         self.assertIn("0.91", content)
 
 
+class TestRealDataEdgeCases(unittest.TestCase):
+
+    def test_proxy_respects_custom_theft_rate(self):
+        for rate in [0.05, 0.12, 0.20]:
+            df = generate_realistic_sgcc_proxy(n_customers=300, theft_rate=rate, random_state=99)
+            actual = df["label"].mean()
+            # Allow reasonable statistical tolerance
+            self.assertGreaterEqual(actual, rate * 0.6)
+            self.assertLessEqual(actual, rate * 1.6)
+
+    def test_sgcc_extractor_handles_turkish_column_names(self):
+        # Simulate possible real utility data with Turkish column names
+        rows = 25
+        data = {
+            "ABONE_NO": [f"A{i:04d}" for i in range(rows)],
+            "KACAK_FLAG": [0] * 20 + [1] * 5,
+        }
+        for day in range(35):
+            data[f"GUN_{day}"] = [round(1.5 + (day % 7) * 0.1, 2) for _ in range(rows)]
+
+        df = pd.DataFrame(data)
+        features = extract_sgcc_style_features(df, label_col="KACAK_FLAG", min_daily_cols=20)
+        self.assertEqual(len(features), rows)
+        self.assertIn("label", features.columns)
+        self.assertTrue((features["label"].iloc[-5:] == 1).all())
+
+    def test_report_generator_handles_minimal_input(self):
+        minimal = {
+            "synthetic_in_dist_auc": 0.85,
+            "sgcc_proxy_in_dist_auc": 0.79,
+            "auc_gap": 0.06,
+        }
+        path = generate_real_data_validation_report(minimal, output_path="/tmp/minimal_report.md")
+        self.assertTrue(Path(path).exists())
+
+
 if __name__ == "__main__":
     unittest.main()
