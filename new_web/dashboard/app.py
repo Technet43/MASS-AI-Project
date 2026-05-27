@@ -1233,6 +1233,13 @@ def render_sidebar(features_df):
     st.sidebar.caption(local_t["language_help"])
     st.sidebar.markdown(f"## ⚡ {local_t['sidebar_app_title']}")
     st.sidebar.markdown(f"*{local_t['sidebar_app_subtitle']}*")
+
+    # Show when we're using the real shared engine (ongoing anti-duplication effort)
+    if ENGINE_AVAILABLE and get_engine() is not None:
+        st.sidebar.success("✓ Advanced Engine active (shared/core)", icon="🚀")
+    else:
+        st.sidebar.warning("Using legacy in-file models", icon="⚠️")
+
     st.sidebar.markdown("---")
 
     st.sidebar.markdown(f"### {local_t['filters_header']}")
