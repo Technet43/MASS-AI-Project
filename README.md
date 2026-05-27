@@ -11,9 +11,8 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?logo=scikit-learn&logoColor=white)](https://scikit-learn.org/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0%2B-EC4E20)](https://xgboost.readthedocs.io/)
-[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15%2B-FF6F00?logo=tensorflow&logoColor=white)](https://tensorflow.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?logo=vercel&logoColor=white)](https://mass-ai-project.vercel.app/)
+[![Plotly](https://img.shields.io/badge/Plotly-5.18%2B-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e)](LICENSE)
 
 <br/>
@@ -24,46 +23,43 @@
 
 <br/>
 
-> **MASS AI** is a production-ready machine learning platform that detects electricity theft and consumption anomalies from smart meter data. Built for Turkey's MASS initiative (50 million smart meters by 2028), it targets regions where theft rates exceed **28%** — causing an estimated **₺10B+ in annual losses**.
+> **MASS AI** is a machine learning platform designed to detect electricity theft and anomalies from smart meter data. It was built with Turkey's national smart meter rollout (50 million meters by 2028) in mind, targeting regions where non-technical losses can exceed 28%.
 
 ---
 
-## Real Data Validation (May 2026)
+## Real Data Validation (2026)
 
-One of the most important improvements in 2026 was building a proper **real data validation layer**.
+In May 2026, a major focus was adding proper support for **real public datasets**.
 
-We created a full production-grade integration for public electricity theft datasets (starting with SGCC, the most widely used academic benchmark).
+We built a complete integration layer for the SGCC electricity theft dataset (the most common academic benchmark).
 
-**Latest Benchmark Results:**
+**Benchmark Results (May 2026):**
 
-| Dataset                    | AUC     | F1     |
-|---------------------------|---------|--------|
-| Synthetic (Turkey Urban)  | 0.999   | 0.97   |
-| SGCC-style Realistic Proxy| 0.912   | 0.80   |
-| **Measured Gap**          | **~0.087** | -    |
+| Dataset                    | AUC    | F1     |
+|---------------------------|--------|--------|
+| Synthetic (Turkey Urban)  | 0.999  | 0.97   |
+| SGCC-style Realistic Proxy| 0.912  | 0.80   |
+| **Measured Gap**          | **~0.087** | —   |
 
-This gap is now **measured and transparent**. We have complete tooling, automated reports, and clear documentation around it.
+This gap is now measured and documented. Full tooling and automated reports are available.
 
-See:
-- [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md)
-- `python scripts/benchmark_real_vs_synthetic.py`
+See [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md) and run:
+```bash
+python scripts/benchmark_real_vs_synthetic.py
+```
 
 ---
 
 ## Current Architecture (2026)
 
-**Single Source of Truth:** `shared/core/` (MassAIEngine + dashboard_adapters)
+After a major cleanup and modernization effort:
 
-After a major modernization effort in 2026, the project now has a much cleaner structure:
+- **Single Source of Truth**: `shared/core/` (MassAIEngine + clean adapters)
+- `new_web/dashboard/` is now a much thinner presentation layer
+- Legacy code has been moved to `legacy/`
+- The dashboard was heavily refactored (reduced by ~400+ lines, many deprecated functions removed)
 
-- `shared/core/` → The only place containing real ML logic, synthetic data generation, model training, and real data adapters.
-- `new_web/dashboard/` → Thin presentation layer (heavily cleaned and modernized).
-- `docs/` → Strong incubation and technical documentation.
-- `legacy/` → Old code moved here.
-
-The dashboard was significantly refactored (reduced from ~2570 lines to ~2135 lines), with most duplicated logic removed and moved to clean adapters.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/Feature_Catalog.md](docs/Feature_Catalog.md) for details.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ---
 
@@ -71,19 +67,18 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/Feature_Catalog.md](docs/Featur
 
 | | Feature | Description |
 |---|---|---|
-| 🤖 | **6 ML Models** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting, LSTM Autoencoder + Stacking Ensemble |
-| 🔍 | **8 Theft Patterns** | Realistic Turkish consumption theft behaviors (night zeroing, bypass, tampering, etc.) |
-| 🧮 | **~40 Features** | Rich statistical, temporal, peer, and domain-specific features |
-| 📊 | **Real Data Validation** | Full SGCC-style benchmark with measured ~0.09 AUC gap |
-| 🗂️ | **Ops Center** | Case management with audit trail |
-| 🌐 | **Modern Web Dashboard** | Clean Streamlit UI (major 2026 modernization) |
-| ⚡ | **Synthetic + Real Data Engine** | Strong synthetic generator + production-ready real data support |
+| 🤖 | **5 Models + Stacking** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting + Stacking Ensemble |
+| 🔍 | **8 Theft Patterns** | Realistic Turkish consumption behaviors |
+| 🧮 | **~40 Features** | Statistical, temporal, peer and domain features |
+| 📊 | **Real Data Support** | SGCC-style benchmark with measured gap (~0.09 AUC) |
+| 🗂️ | **Ops Center** | Basic case management |
+| 🌐 | **Web Dashboard** | Streamlit UI (heavily cleaned in 2026) |
 
-**Current Focus:** Incubation preparation (İTÜ Çekirdek & Yıldız Teknik) with emphasis on real data transparency and code quality.
+**Current Focus:** Preparing for university incubation programs with emphasis on real data transparency.
 
 ---
 
-## Development (Recommended Way)
+## Development
 
 ### Setup
 
@@ -91,19 +86,19 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/Feature_Catalog.md](docs/Featur
 pip install -r shared/requirements.txt
 ```
 
-### Running the Project
+### Running
 
-**Best experience:**
+**Recommended:**
 ```bash
 python apps/launcher/MASS_AI_LAUNCHER.py
 ```
 
-**Run the Streamlit dashboard directly:**
+**Dashboard only:**
 ```bash
 streamlit run new_web/dashboard/app.py
 ```
 
-### Running Tests
+### Tests
 
 ```bash
 python -m pytest shared/tests/ -v
@@ -113,45 +108,33 @@ python -m pytest shared/tests/ -v
 
 ## Incubation Materials (2026)
 
-During an extended deep work session in May 2026, the following professional materials were prepared:
+During an extended work session in May 2026, the following materials were prepared:
 
-- Full Pitch Deck Content
-- Business Model & Revenue Scenarios
+- Full Pitch Deck content
+- Business Model & Revenue scenarios
 - Traction & Pilot Plan
 - Real Data Validation Summary
 - Incubation Readiness Checklist
-- Updated One Pager
 
-See [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md) for the full list.
+See [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md).
 
 ---
 
 ## Current Status
 
-- **Code Quality:** Significantly improved (heavy dashboard modernization + architecture cleanup)
-- **Real Data:** Full tooling + measured benchmark results
-- **Tests:** 39 tests passing
-- **Documentation:** Strong incubation package ready
+- Code quality significantly improved
+- Real data gap measured and documented
+- 39 tests passing
+- Strong documentation for incubation
 
-The project is in a much cleaner and more professional state compared to early 2026.
-
----
-
-## React + Vercel Website
-
-**Live site:** https://mass-ai-project.vercel.app/
-
-```bash
-npm install
-npm run dev
-```
+The project is in a much cleaner and more honest state than earlier in 2026.
 
 ---
 
 ## License
 
-MIT License
+MIT
 
 ---
 
-*Last major update: May 2026 (during extended deep work & incubation preparation session)*
+*Last updated: May 2026*
