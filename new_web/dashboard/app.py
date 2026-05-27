@@ -1013,11 +1013,13 @@ def get_engine_metrics_and_df(engine_result: dict | None):
 
 
 def prepare_simulation_data_from_engine(engine_scored_df):
-    """Prepare a simulation-ready dataframe from engine output."""
+    """
+    LEGACY / DEPRECATED
+    Use shared.core.dashboard_adapters.prepare_for_simulation or prepare_simulation_from_engine instead.
+    """
     if engine_scored_df is None or engine_scored_df.empty:
         return None
     sim_df = engine_scored_df.copy()
-    # Ensure required columns for simulation
     if "theft_probability" not in sim_df.columns and "risk_score" in sim_df.columns:
         sim_df["theft_probability"] = sim_df["risk_score"] / 100
     if "risk_level" not in sim_df.columns and "risk_category" in sim_df.columns:
@@ -1765,6 +1767,7 @@ def render_model_performance(df, metrics):
     # New path: When using the real MassAIEngine, show richer info
     if metrics and metrics.get("engine_mode"):
         st.success(f"🚀 Using advanced engine — Best model: **{metrics.get('best_model', 'Stacking Ensemble')}**")
+
         overview = metrics.get("overview", {})
         if overview:
             c1, c2, c3 = st.columns(3)
