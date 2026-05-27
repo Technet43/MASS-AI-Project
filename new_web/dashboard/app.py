@@ -1774,6 +1774,10 @@ def render_model_performance(df, metrics):
                 f1 = res.get("f1", 0)
                 cols[i].metric(model_name, f"AUC {auc:.3f}", f"F1 {f1:.3f}")
 
+        # Use the new adapter summary if present
+        if "best_model" in metrics:
+            st.caption(f"Primary model powering this view: **{metrics['best_model']}**")
+
         st.info("Detailed ROC/PR curves for the full 6-model ensemble coming in follow-up work.")
         st.markdown("---")
         if "rf_auc" not in metrics:
