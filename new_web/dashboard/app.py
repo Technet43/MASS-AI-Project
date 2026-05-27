@@ -1294,6 +1294,15 @@ def render_sidebar(features_df):
     if engine is not None and ENGINE_AVAILABLE:
         preset_options = ["Turkey Urban", "Industrial Theft Sweep", "Mixed Retail Anomalies", "Rural Meter Drift"]
         selected_preset = st.sidebar.selectbox("Sentetik Veri Preseti (Engine)", preset_options, index=0)
+
+        if st.sidebar.button("🔄 Bu preset ile yeniden üret", use_container_width=True):
+            with st.spinner("MassAIEngine ile yeni sentetik veri üretiliyor..."):
+                fresh, err = load_synthetic_via_engine(n_customers=1200, n_days=90, preset=selected_preset)
+                if fresh:
+                    st.session_state["engine_data"] = fresh
+                    st.success("Yeni veri engine üzerinden üretildi. Sayfayı yenileyin veya simülasyonu başlatın.")
+                else:
+                    st.error(f"Engine üretimi başarısız: {err}")
     else:
         selected_preset = None
 
