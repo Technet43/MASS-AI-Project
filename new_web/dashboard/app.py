@@ -35,6 +35,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from translations import TRANSLATIONS
+
 
 DASHBOARD_DIR = Path(__file__).resolve().parent
 ROOT_DIR = DASHBOARD_DIR.parent.parent
@@ -93,26 +95,7 @@ FEATURE_COLUMNS = [
 ]
 
 
-TRANSLATIONS = {
-    "tr": {
-        "page_title": "MASS-AI | Akıllı Sayaç Anomali Tespiti",
-        "sidebar_app_title": "MASS-AI v2.0",
-        "sidebar_app_subtitle": "Akıllı Sayaç Anomali Tespiti",
-        "language_toggle": "Türkçe / English",
-        "language_help": "Kapalı: Türkçe, Açık: English",
-        "filters_header": "Filtreler",
-        "profile_filter": "Müşteri Profili",
-        "risk_filter": "Risk Seviyesi",
-        "threshold_filter": "Kaçak Olasılık Eşiği",
-        "displayed_count": "Gösterilen",
-        "project_info_header": "Proje Bilgisi",
-        "project_author": "Ömer Burak Koçak",
-        "project_school": "Marmara Üniversitesi EEE - 2026",
-        "main_header": "MASS-AI Dashboard",
-        "main_subheader": "Milli Akıllı Sayaç Sistemleri - Yapay Zeka Tabanlı Anomali Tespit ve Kaçak Elektrik Sınıflandırma v2.0",
-        "tabs": {
-            "overview": "Genel Bakış",
-            "timeseries": "Zaman Serisi Karşılaştırma",
+"timeseries": "Zaman Serisi Karşılaştırma",
             "performance": "Model Performansı",
             "customer": "Müşteri Detay",
             "simulation": "Canlı Simülasyon",
@@ -2501,7 +2484,7 @@ def main():
     )
 
     # Prefer the real shared MassAIEngine (big step toward removing duplication)
-    # === Preferred Path: Use MassAIEngine via clean adapters ===
+    # === Preferred Path: Use MassAIEngine via clean adapters (dashboard_adapters.py) ===
     engine_data, raw_df = load_data(use_engine=True)
 
     used_engine = False
