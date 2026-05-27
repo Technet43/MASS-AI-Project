@@ -1775,6 +1775,15 @@ def render_model_performance(df, metrics):
             c2.metric("Critical Cases", overview.get("critical_count", "-"))
             c3.metric("Est. Monthly Exposure", f"{overview.get('total_loss', 0):,.0f} ₺")
 
+        # Prefer the new adapter helper for performance data when available
+        try:
+            from shared.core.dashboard_adapters import get_engine_scored_for_performance
+            perf_data = get_engine_scored_for_performance({"overview": metrics.get("overview", {}), "best_model": metrics.get("best_model")})
+            if perf_data.get("summary"):
+                st.caption("Performance summary powered by shared/core adapters")
+        except Exception:
+            pass
+
         engine_res = metrics.get("engine_results", {})
         if engine_res:
             st.markdown("**Engine Model Performance (from shared/core):**")
@@ -1784,7 +1793,6 @@ def render_model_performance(df, metrics):
                 f1 = res.get("f1", 0)
                 cols[i].metric(model_name, f"AUC {auc:.3f}", f"F1 {f1:.3f}")
 
-        # Use the new adapter summary if present
         if "best_model" in metrics:
             st.caption(f"Primary model powering this view: **{metrics['best_model']}**")
 
