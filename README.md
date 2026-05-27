@@ -33,7 +33,13 @@
 
 **Single Source of Truth:** `shared/core/mass_ai_engine.py`
 
-The project is currently undergoing a major cleanup and professionalization effort with the goal of reaching **9.0+ in every evaluation category**.
+The project is currently undergoing a major cleanup and professionalization effort with the goal of reaching **9.0+ in every evaluation category** (see plan in session notes).
+
+Recent progress:
+- Strong testing improvements (26+ tests, high coverage on core engine)
+- New `dashboard_adapters.py` layer to eliminate duplication
+- Architecture documentation added
+- Legacy code being consolidated into `legacy/` folder
 
 - `shared/core/` → The only place containing real ML logic, synthetic data generation, and model training (6 models + stacking ensemble).
 - `new_web/dashboard/` → Being migrated to a thin UI layer that consumes the engine.
