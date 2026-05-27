@@ -79,3 +79,38 @@ def prepare_for_simulation(engine_scored_df: pd.DataFrame) -> pd.DataFrame:
         df["risk_level"] = df["risk_category"].astype(str)
 
     return df
+
+
+def get_engine_performance_summary(engine_result: dict) -> dict:
+    """Return a clean summary of model performance when using the engine."""
+    if not engine_result or "overview" not in engine_result:
+        return {"error": "No engine data"}
+
+    overview = engine_result.get("overview", {})
+    best_model = engine_result.get("best_model", "Unknown")
+
+    return {
+        "best_model": best_model,
+        "high_risk_count": overview.get("high_risk_count", 0),
+        "critical_count": overview.get("critical_count", 0),
+        "total_customers": overview.get("customer_count", 0),
+        "estimated_monthly_loss": overview.get("total_loss", 0),
+        "average_risk": overview.get("average_probability", 0),
+    }
+
+
+def get_rich_scored_data_for_ui(engine_result: dict) -> pd.DataFrame:
+    """Return the scored dataframe optimized for dashboard display."""
+    if not engine_result or "scored" not in engine_result:
+        return pd.DataFrame()
+
+    df = engine_result["scored"].copy()
+
+    # Standardize columns the UI likes
+    if "risk_category" in df.columns:
+        df["risk_level"] = df["risk_category"].astype(str)
+
+    if "risk_score" in df.columns and "theft_probability" not in df.columns:
+        df["theft_probability"] = df["risk_score"] / 100.0
+
+    return df

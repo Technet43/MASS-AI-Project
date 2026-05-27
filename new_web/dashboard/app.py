@@ -2512,20 +2512,37 @@ def main():
 
     used_engine = False
     if raw_df is None and isinstance(engine_data, dict):
-        features_df, engine_metrics = get_engine_metrics_and_df(engine_data)
-        if features_df is not None:
-            metrics = engine_metrics
+        # Use the new clean adapter
+        try:
+            from shared.core.dashboard_adapters import (
+                get_rich_scored_data_for_ui,
+                get_engine_performance_summary,
+            )
+            features_df = get_rich_scored_data_for_ui(engine_data)
+            perf_summary = get_engine_performance_summary(engine_data)
+
+            metrics = {
+                "engine_mode": True,
+                "best_model": perf_summary.get("best_model", engine_data.get("best_model")),
+                "overview": engine_data.get("overview", {}),
+                "engine_results": engine_data.get("engine", {}).results if hasattr(engine_data.get("engine"), "results") else {},
+            }
             used_engine = True
-        else:
-            features_df, raw_df = load_data(use_engine=False)
-            features_df, metrics = run_models(features_df)
+        except Exception:
+            # Fallback to old local function if something goes wrong
+            features_df, engine_metrics = get_engine_metrics_and_df(engine_data)
+            if features_df is not None:
+                metrics = engine_metrics
+                used_engine = True
+            else:
+                features_df, raw_df = load_data(use_engine=False)
+                features_df, metrics = run_models(features_df)
     else:
         # Legacy path
         if raw_df is None:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
         else:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
-        # Prefer new wrapper that tries engine first
         features_df, metrics = run_models_prefer_engine(features_df, engine_result=engine_data if isinstance(engine_data, dict) else None)
     filtered_df, threshold = render_sidebar(features_df)
     local_t = get_translations()
