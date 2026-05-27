@@ -307,39 +307,36 @@ The built-in data engine generates realistic Turkish smart meter data with no ex
 
 ---
 
-## Project Structure
+## Current Project Structure (Refactored Direction)
+
+**Source of truth for ML logic:** `shared/core/mass_ai_engine.py` (MassAIEngine with 6 models + stacking + excellent Turkish synthetic generator).
+
+**Important (2026 update):**
+- We are actively reducing duplication. The large Streamlit dashboard (`new_web/dashboard/app.py`) is being migrated to use `shared/core` instead of re-implementing the engine.
+- Old duplicated code in `project/legacy_pipeline` and older sections should be treated as historical/research only.
 
 ```
-MASS_AI_UNIFIED_APP/
-├── MASS_AI_LAUNCHER.py          # Unified launcher (Tkinter)
-├── START_MASS_AI.bat            # Quick start
-├── INSTALL_REQUIREMENTS.bat     # One-click dependency install
-├── BUILD_DESKTOP_EXE.bat        # Package to .exe (PyInstaller)
-│
-├── project/
-│   ├── mass_ai_desktop.py       # Desktop analyst application
-│   ├── mass_ai_engine.py        # ML engine + synthetic data generator
-│   ├── mass_ai_domain.py        # Domain utilities & report formatting
-│   ├── ops_store.py             # SQLite Ops Center persistence
-│   ├── ui_kit.py                # Custom Tkinter UI components
-│   │
-│   ├── dashboard/app.py         # Streamlit web dashboard (5 tabs)
-│   │
-│   ├── legacy_pipeline/         # Research pipeline & experimental models
-│   │   ├── generate_synthetic_data.py
-│   │   ├── theft_detection_model.py
-│   │   ├── lstm_autoencoder.py
-│   │   ├── advanced_pipeline.py
-│   │   └── run_pipeline.py
-│   │
+MASS-AI-Project/
+├── MASS_AI_LAUNCHER.py          # Glassmorphism launcher (recommended entry)
+├── shared/
+│   ├── core/                    # ← CURRENT SOURCE OF TRUTH
+│   │   ├── mass_ai_engine.py    # MassAIEngine (real engine)
+│   │   ├── ops_store.py
+│   │   └── ...
+│   ├── data/
 │   └── tests/
-│       ├── test_mass_ai_engine.py
-│       └── test_ops_center.py
-│
-├── docs/                        # Architecture & design documents
-├── new_web/site/images/         # Archived screenshots & result plots used in docs
-└── business_docs/               # Research materials & presentations
+├── old_desktop/                 # Tkinter desktop analyst app (uses shared/core)
+├── new_web/
+│   ├── dashboard/app.py         # Streamlit (migrating to shared/core)
+│   └── site/                    # Static marketing site
+├── src/                         # React sources for the Vercel landing page
+├── docs/
+└── various launch scripts + requirements files
 ```
+
+**Recommended way to run:**
+- Use `MASS_AI_LAUNCHER.py` (best experience)
+- Or directly: Streamlit → `streamlit run new_web/dashboard/app.py` (after pip install -r shared/requirements.txt)
 
 ---
 

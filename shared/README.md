@@ -1,38 +1,25 @@
-# Project Layout
+# Shared Core (Current Source of Truth)
 
-This folder is organized around the two MASS-AI app versions plus a shared core.
+This is the **recommended and actively maintained** Python core for MASS-AI.
 
-## Main Folders
+## Current Recommended Structure (2026)
 
-- `core/`
-  Shared engine, domain logic, metadata, preferences, persistence, and support helpers.
-- `old_desktop/`
-  First version of the app.
-  Tkinter desktop UI, desktop-only UI kit, packaging files, and desktop requirements.
-- `new_web/`
-  Newer version of the app.
-  Streamlit dashboard and web-oriented requirements.
-- `data/`
-  Shared datasets used by both versions.
-- `tests/`
-  Unit tests for the shared core.
-- `archive/`
-  Older research code removed from the main runtime layout.
+- `shared/core/`
+  - `mass_ai_engine.py` — Main `MassAIEngine` (6 models, stacking, explainability, strong synthetic generator with Turkish regional presets)
+  - `ops_store.py` — SQLite-backed Ops Center
+  - Supporting modules (domain, metadata, prefs, support bundle)
 
-## Entry Points
+- `shared/data/` — Sample / processed datasets
+- `shared/tests/` — Tests for the core (run via launcher or unittest)
 
-- Old desktop:
-  `START_MASS_AI_DESKTOP.bat`
-- Launcher:
-  `START_MASS_AI.bat`
-- New web directly:
-  `START_MASS_AI_WEB.bat`
+## How the UIs should use it
 
-## Install
+- Desktop analyst app (`old_desktop/mass_ai_desktop.py`) → already correctly imports from `shared/core`
+- Streamlit dashboard (`new_web/dashboard/app.py`) → being migrated to use the engine (no more massive in-file duplication)
+- Root launcher (`MASS_AI_LAUNCHER.py`) → orchestrates the above
 
-- Both versions:
-  `python -m pip install -r project/requirements.txt`
-- Desktop only:
-  `python -m pip install -r project/old_desktop/requirements.txt`
-- Web only:
-  `python -m pip install -r project/new_web/requirements.txt`
+## Goal
+
+Eliminate duplication. The 2300+ line Streamlit file should become a thin UI over the shared engine.
+
+Old duplicated logic in `project/`, `new_web/dashboard` (legacy sections), and `old_desktop` copies should be deprecated over time.

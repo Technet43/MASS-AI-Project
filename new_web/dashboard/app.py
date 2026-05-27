@@ -39,8 +39,17 @@ CORE_DIR = ROOT_DIR / "shared" / "core"
 if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 
+# Use the real shared engine instead of duplicating ML logic
+try:
+    from mass_ai_engine import MassAIEngine
+    from mass_ai_domain import RISK_LABELS as ENGINE_RISK_LABELS
+    ENGINE_AVAILABLE = True
+except Exception as import_exc:
+    MassAIEngine = None
+    ENGINE_RISK_LABELS = ["low", "medium", "high", "critical"]
+    ENGINE_AVAILABLE = False
 
-PROFILE_OPTIONS = ["residential", "commercial", "industrial"]
+PROFILE_OPTIONS = ["residential", "commercial", "industrial", "mixed_use"]
 RISK_OPTIONS = ["low", "medium", "high", "critical"]
 RISK_COLORS = {
     "low": "#27AE60",
@@ -54,7 +63,12 @@ THEFT_TYPE_OPTIONS = [
     "random_zeros",
     "gradual_decrease",
     "peak_clipping",
+    "weekend_masking",
+    "intermittent_bypass",
+    "tamper_spikes",
 ]
+
+# Keep a minimal feature list for legacy upload paths; engine handles the real heavy lifting
 FEATURE_COLUMNS = [
     "mean_consumption",
     "std_consumption",
@@ -70,11 +84,8 @@ FEATURE_COLUMNS = [
     "weekend_weekday_ratio",
     "peak_hour",
     "zero_measurement_pct",
-    "zero_day_pct",
     "sudden_change_ratio",
     "trend_slope",
-    "q25",
-    "q75",
     "iqr",
 ]
 
@@ -940,6 +951,37 @@ def build_simulation_customer_pool(simulation_df, selected_customer_id, n_custom
 
 initialize_language_state()
 t = get_translations()
+
+
+def get_engine() -> "MassAIEngine | None":
+    """Get or create a MassAIEngine instance (cached in session state)."""
+    if not ENGINE_AVAILABLE or MassAIEngine is None:
+        return None
+    if "mass_engine" not in st.session_state:
+        st.session_state.mass_engine = MassAIEngine()
+    return st.session_state.mass_engine
+
+
+def load_synthetic_via_engine(n_customers: int = 2000, n_days: int = 180, preset: str | None = None):
+    """Preferred path: Use the real shared MassAIEngine for synthetic data + training."""
+    engine = get_engine()
+    if engine is None:
+        return None, "Engine not available - falling back to legacy in-file implementation"
+
+    try:
+        features = engine.generate_synthetic(n_customers=n_customers, n_days=n_days, preset_name=preset)
+        engine.train_models()
+        scored = engine.score_customers()
+        overview = engine.build_overview() or {}
+        return {
+            "features": features,
+            "scored": scored,
+            "overview": overview,
+            "engine": engine,
+            "best_model": overview.get("best_model", "Stacking Ensemble"),
+        }, None
+    except Exception as exc:
+        return None, f"Engine failed: {exc}"
 
 
 st.set_page_config(
