@@ -1106,9 +1106,8 @@ def build_fallback_raw_data(features_df):
 @st.cache_data
 def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 120, preset: str | None = None):
     """
-    Preferred: Try to load via the real MassAIEngine from shared/core.
-    Falls back to pre-baked CSV in shared/data/processed if engine is unavailable
-    or the user explicitly wants the legacy dataset.
+    Main data loading entry point.
+    Strongly prefers the engine via adapters. Legacy CSV fallback is kept only for compatibility.
     """
     if use_engine:
         # Strongly prefer the new clean adapter from shared/core
