@@ -1,10 +1,20 @@
-# Project Layout (Legacy / Historical)
+# Project Layout (DEPRECATED - Historical Only)
 
-**Note (2026):** The actively maintained core has moved to `../shared/core/`.
+**WARNING (2026):** 
+This entire `project/` directory is legacy and should not be used for new development.
 
-This folder contains older/legacy versions and is kept for reference only.
+**Current single source of truth:**
+→ `../shared/core/mass_ai_engine.py` (MassAIEngine + full 6-model stack + Turkish synthetic generator)
 
-The real engine is now in `shared/core/mass_ai_engine.py`.
+**What used to live here:**
+- Old duplicated engine implementations
+- Legacy desktop code (now in `../old_desktop/`)
+- Old tests and pipelines
+
+**Recommendation:** 
+Do not run code from this folder. Use the root launcher or `shared/` directly.
+
+This folder is kept only for git history and reference during the ongoing de-duplication effort.
 
 ## Main Folders
 

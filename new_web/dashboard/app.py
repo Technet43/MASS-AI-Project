@@ -997,9 +997,10 @@ def get_engine_metrics_and_df(engine_result: dict | None):
         scored["risk_level"] = scored["risk_category"].astype(str)
     if "risk_score" in scored.columns and "theft_probability" not in scored.columns:
         scored["theft_probability"] = scored["risk_score"] / 100.0
+    if "priority_index" in scored.columns:
+        scored["priority"] = scored["priority_index"]
 
     # Build a minimal metrics dict for the performance tab
-    # (We don't have full cross-val curves from engine easily, so provide what we can)
     metrics = {
         "engine_mode": True,
         "best_model": engine_result.get("best_model", "Stacking Ensemble"),
@@ -1007,11 +1008,23 @@ def get_engine_metrics_and_df(engine_result: dict | None):
         "feature_importance_available": False,
     }
 
-    # If the engine has trained models with importances, we can expose later
     if engine and hasattr(engine, "results"):
         metrics["engine_results"] = engine.results
 
     return scored, metrics
+
+
+def prepare_simulation_data_from_engine(engine_scored_df):
+    """Prepare a simulation-ready dataframe from engine output."""
+    if engine_scored_df is None or engine_scored_df.empty:
+        return None
+    sim_df = engine_scored_df.copy()
+    # Ensure required columns for simulation
+    if "theft_probability" not in sim_df.columns and "risk_score" in sim_df.columns:
+        sim_df["theft_probability"] = sim_df["risk_score"] / 100
+    if "risk_level" not in sim_df.columns and "risk_category" in sim_df.columns:
+        sim_df["risk_level"] = sim_df["risk_category"].astype(str)
+    return sim_df
 
 
 st.set_page_config(
@@ -2154,6 +2167,12 @@ def render_live_simulation(df, raw_df):
     uploaded_override_active = st.session_state.get("simulation_source") == "uploaded"
     simulation_df = st.session_state.get("simulation_features_override", df) if uploaded_override_active else df
     simulation_raw = st.session_state.get("simulation_raw_override", raw_df) if uploaded_override_active else raw_df
+
+    # If we have engine data available in session, prefer it for richer simulation
+    if not uploaded_override_active and st.session_state.get("engine_data") and "scored" in st.session_state["engine_data"]:
+        engine_sim = prepare_simulation_data_from_engine(st.session_state["engine_data"]["scored"])
+        if engine_sim is not None and len(engine_sim) > 0:
+            simulation_df = engine_sim
 
     if uploaded_override_active:
         st.success(local_t["simulation"]["active_uploaded_info"])
