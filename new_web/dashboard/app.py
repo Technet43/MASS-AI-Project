@@ -2500,7 +2500,8 @@ def main():
             features_df = engine_data if engine_data is not None else pd.DataFrame()
         else:
             features_df = engine_data if engine_data is not None else pd.DataFrame()
-        features_df, metrics = run_models(features_df)
+        # Prefer new wrapper that tries engine first
+        features_df, metrics = run_models_prefer_engine(features_df, engine_result=engine_data if isinstance(engine_data, dict) else None)
     filtered_df, threshold = render_sidebar(features_df)
     local_t = get_translations()
 
