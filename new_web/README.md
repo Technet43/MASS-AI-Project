@@ -9,4 +9,6 @@ This is the newer MASS-AI version.
 
 Run directly with:
 
-`streamlit run project/new_web/dashboard/app.py`
+`streamlit run new_web/dashboard/app.py`
+
+**Note**: The project is being migrated to use `shared/core/` as the single source of truth. New logic should go there.

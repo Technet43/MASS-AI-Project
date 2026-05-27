@@ -49,18 +49,24 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ---
 
-## Development
+## Development (Current Recommended Way)
 
 ### Setup
 
 ```bash
-# Recommended
+# Install the single source of truth dependencies
 pip install -r shared/requirements.txt
+```
 
-# Run the nice launcher
+### Running the Project
+
+**Best experience:**
+```bash
 python MASS_AI_LAUNCHER.py
+```
 
-# Or run the Streamlit dashboard directly
+**Run the Streamlit dashboard directly:**
+```bash
 streamlit run new_web/dashboard/app.py
 ```
 
@@ -68,11 +74,17 @@ streamlit run new_web/dashboard/app.py
 
 ```bash
 pip install pytest pytest-cov
-cd shared
-python -m pytest tests/ -v --cov=core --cov-report=term-missing
+python -m pytest shared/tests/ -v --cov=shared/core --cov-report=term-missing
 ```
 
-We are actively working toward high test coverage and clean architecture. See the plan in the session notes if you're contributing to the 9+ quality push.
+### Architecture Note
+
+- **Single source of truth**: `shared/core/` (especially `mass_ai_engine.py`)
+- All new development should go through `shared/core/`
+- Legacy code has been moved to `legacy/`
+- The dashboard is gradually being migrated to use clean adapters from `shared/core/`
+
+We are actively working to bring the project to 9.0+ across all quality dimensions.
 
 <br/>
 

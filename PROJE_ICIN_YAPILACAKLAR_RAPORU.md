@@ -1,5 +1,10 @@
 # MASS-AI Proje İçin Yapılacaklar Raporu
 
+> **Historical Document (April 2026)**
+> This report is from the early phase of the project. The architecture has changed significantly since then.
+> Current single source of truth: `shared/core/`
+> See [ARCHITECTURE.md](ARCHITECTURE.md) for the latest state.
+
 Hazırlanma tarihi: 2026-04-16
 
 İncelenen kaynaklar:

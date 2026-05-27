@@ -1,4 +1,10 @@
-# MASS-AI Project Layout
+# MASS-AI Project Layout (OUTDATED)
+
+> **This document is historical** and no longer reflects the current structure.
+> The project has undergone significant cleanup. 
+> Current recommended structure is documented in [../ARCHITECTURE.md](../ARCHITECTURE.md).
+
+---
 
 This workspace is organized around a shared core plus two app versions: the old desktop version and the new web version.
 
