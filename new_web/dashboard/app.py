@@ -35,8 +35,6 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from translations import TRANSLATIONS
-
 
 DASHBOARD_DIR = Path(__file__).resolve().parent
 ROOT_DIR = DASHBOARD_DIR.parent.parent
@@ -95,7 +93,26 @@ FEATURE_COLUMNS = [
 ]
 
 
-"timeseries": "Zaman Serisi Karşılaştırma",
+TRANSLATIONS = {
+    "tr": {
+        "page_title": "MASS-AI | Akıllı Sayaç Anomali Tespiti",
+        "sidebar_app_title": "MASS-AI v2.0",
+        "sidebar_app_subtitle": "Akıllı Sayaç Anomali Tespiti",
+        "language_toggle": "Türkçe / English",
+        "language_help": "Kapalı: Türkçe, Açık: English",
+        "filters_header": "Filtreler",
+        "profile_filter": "Müşteri Profili",
+        "risk_filter": "Risk Seviyesi",
+        "threshold_filter": "Kaçak Olasılık Eşiği",
+        "displayed_count": "Gösterilen",
+        "project_info_header": "Proje Bilgisi",
+        "project_author": "Ömer Burak Koçak",
+        "project_school": "Marmara Üniversitesi EEE - 2026",
+        "main_header": "MASS-AI Dashboard",
+        "main_subheader": "Milli Akıllı Sayaç Sistemleri - Yapay Zeka Tabanlı Anomali Tespit ve Kaçak Elektrik Sınıflandırma v2.0",
+        "tabs": {
+            "overview": "Genel Bakış",
+            "timeseries": "Zaman Serisi Karşılaştırma",
             "performance": "Model Performansı",
             "customer": "Müşteri Detay",
             "simulation": "Canlı Simülasyon",
@@ -929,10 +946,9 @@ def get_engine() -> "MassAIEngine | None":
 
 def load_synthetic_via_engine(n_customers: int = 2000, n_days: int = 180, preset: str | None = None):
     """
-    LEGACY / DEPRECATED
-    Use shared.core.dashboard_adapters.load_synthetic_data_via_engine instead.
+    LEGACY / DEPRECATED - Use the adapter version instead.
     """
-    raise RuntimeError("load_synthetic_via_engine is deprecated. Use shared/core/dashboard_adapters instead.")
+    raise RuntimeError("load_synthetic_via_engine is deprecated.")
     engine = get_engine()
     if engine is None:
         return None, "Engine not available - falling back to legacy in-file implementation"
@@ -1090,7 +1106,7 @@ def build_fallback_raw_data(features_df):
 def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 120, preset: str | None = None):
     """
     Main data loading entry point.
-    Strongly prefers the engine via adapters.
+    Strongly prefers the engine via adapters. Legacy CSV fallback is kept only for compatibility.
     """
     if use_engine:
         # Strongly prefer the new clean adapter from shared/core
@@ -2484,7 +2500,7 @@ def main():
     )
 
     # Prefer the real shared MassAIEngine (big step toward removing duplication)
-    # === Preferred Path: Use MassAIEngine via clean adapters (dashboard_adapters.py) ===
+    # === Preferred Path: Use MassAIEngine via clean adapters ===
     engine_data, raw_df = load_data(use_engine=True)
 
     used_engine = False
