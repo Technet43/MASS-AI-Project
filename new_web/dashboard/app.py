@@ -812,12 +812,15 @@ def normalize_uploaded_raw_data(uploaded_df):
 
 
 def build_uploaded_features(raw_df):
-    """Aggregate uploaded raw meter readings into the feature schema used by the models."""
-    feature_rows = []
-
-    for customer_id, group in raw_df.groupby("customer_id"):
-        group = group.sort_values("timestamp").copy()
-        consumption = group["consumption_kw"].astype(float)
+    """
+    LEGACY / DEPRECATED
+    This function contained duplicated feature engineering logic.
+    New development should use shared/core/dashboard_adapters.py or engine methods.
+    """
+    raise RuntimeError(
+        "build_uploaded_features is deprecated. "
+        "Use shared/core/dashboard_adapters or engine methods instead."
+    )
         timestamps = pd.to_datetime(group["timestamp"])
         daily_totals = (
             group.set_index("timestamp")["consumption_kw"].resample("D").sum()
@@ -885,45 +888,15 @@ def build_uploaded_features(raw_df):
 
 
 def score_uploaded_features(reference_features_df, uploaded_features_df):
-    """Score uploaded customer features using the existing anomaly-detection models."""
-    from sklearn.ensemble import IsolationForest, RandomForestClassifier
-    from sklearn.preprocessing import StandardScaler
-
-    feature_cols = [column for column in FEATURE_COLUMNS if column in reference_features_df.columns]
-    x_train = reference_features_df[feature_cols].fillna(0.0).values
-    y_train = reference_features_df["label"].fillna(0).values
-    x_upload = uploaded_features_df.reindex(columns=feature_cols, fill_value=0.0).fillna(0.0).values
-
-    scaler = StandardScaler()
-    x_train_scaled = scaler.fit_transform(x_train)
-    x_upload_scaled = scaler.transform(x_upload)
-
-    iso = IsolationForest(n_estimators=200, contamination=0.12, random_state=42)
-    iso.fit(x_train_scaled)
-    iso_scores = -iso.score_samples(x_upload_scaled)
-
-    rf = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=8,
-        class_weight="balanced",
-        random_state=42,
+    """
+    LEGACY / DEPRECATED
+    This function contained duplicated model training and scoring logic.
+    All new development must go through shared/core/dashboard_adapters.py.
+    """
+    raise RuntimeError(
+        "score_uploaded_features is deprecated. "
+        "Use shared/core/dashboard_adapters instead."
     )
-    rf.fit(x_train_scaled, y_train)
-    rf_probs = rf.predict_proba(x_upload_scaled)[:, 1]
-    rf_preds = rf.predict(x_upload_scaled)
-
-    scored_df = uploaded_features_df.copy()
-    scored_df["anomaly_score"] = iso_scores
-    scored_df["theft_probability"] = rf_probs
-    scored_df["predicted_theft"] = rf_preds
-    scored_df["risk_level"] = pd.cut(
-        scored_df["theft_probability"],
-        bins=[0, 0.3, 0.6, 0.85, 1.0],
-        labels=RISK_OPTIONS,
-        include_lowest=True,
-    ).astype(str)
-
-    return scored_df
 
 
 def build_simulation_customer_pool(simulation_df, selected_customer_id, n_customers):
@@ -1073,13 +1046,13 @@ st.markdown(
 
 
 def build_fallback_raw_data(features_df):
-    periods = 96 * 3
-    timestamps = pd.date_range("2026-01-01", periods=periods, freq="15min")
-    series_frames = []
-
-    for row in features_df.itertuples(index=False):
-        customer_id = getattr(row, "customer_id")
-        mean_value = float(getattr(row, "mean_consumption", 1.0) or 1.0)
+    """
+    LEGACY / DEPRECATED
+    This function is no longer needed in the modern engine-first flow.
+    """
+    raise RuntimeError(
+        "build_fallback_raw_data is deprecated."
+    )
         std_value = float(getattr(row, "std_consumption", 0.2) or 0.2)
         theft_type = str(getattr(row, "theft_type", "none") or "none")
         label = int(getattr(row, "label", 0) or 0)
