@@ -1167,8 +1167,8 @@ def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 12
 @st.cache_data
 def run_models(features_df):
     """
-    LEGACY / DEPRECATED - Do not use for new development.
-    This contains duplicated ML logic. Prefer shared/core/dashboard_adapters.py
+    LEGACY / DEPRECATED - Bu fonksiyon artık kullanılmamalıdır.
+    Yeni geliştirme için shared/core/dashboard_adapters.py içindeki fonksiyonları kullanın.
     """
     from sklearn.ensemble import IsolationForest, RandomForestClassifier
     from sklearn.metrics import (
