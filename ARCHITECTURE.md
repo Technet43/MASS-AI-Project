@@ -59,7 +59,20 @@ python MASS_AI_LAUNCHER.py
 streamlit run new_web/dashboard/app.py
 ```
 
+## Data Model & Global Standards Alignment
+
+The project deliberately uses a richer feature set than most academic baselines (SGCC, CER Ireland, London Smart Meter).
+
+See the full comparison and feature list in [docs/Feature_Catalog.md](docs/Feature_Catalog.md).
+
+**Key points**:
+- ~40 features vs typical 10–20 in literature
+- Strong peer/network context (transformer & feeder level) — rarely present in public papers
+- Domain-specific signals tailored to Turkish utility operations (seasonal flags, tamper events, outages)
+- This richness is both a technical strength and an important credibility point for incubation applications.
+
 ## Status (as of latest work)
 - Engine is the clear heart
 - Dashboard migration in progress
 - Testing and structure being professionalized to reach 9+ rating in all categories
+- Feature catalog and global standards narrative documented for both technical reviewers and incubation juries

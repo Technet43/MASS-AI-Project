@@ -84,7 +84,9 @@ python -m pytest shared/tests/ -v --cov=shared/core --cov-report=term-missing
 - Legacy code has been moved to `legacy/`
 - The dashboard is gradually being migrated to use clean adapters from `shared/core/`
 
-We are actively working to bring the project to 9.0+ across all quality dimensions.
+**Data Model**: We maintain a rich feature set (~40 features) that goes beyond typical academic baselines (SGCC, etc.). See [docs/Feature_Catalog.md](docs/Feature_Catalog.md) for details and global comparison.
+
+We are actively working to bring the project to 9.0+ across all quality dimensions while preparing strong applications for university incubation programs.
 
 <br/>
 
