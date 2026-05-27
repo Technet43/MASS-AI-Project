@@ -5,12 +5,18 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-BASE_DIR = Path(__file__).resolve().parent
+# Project root resolution (launcher is now in apps/launcher/)
+LAUNCHER_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = LAUNCHER_DIR.parent.parent   # apps/launcher/ → apps/ → root
+
+BASE_DIR = PROJECT_ROOT
 SHARED_DIR = BASE_DIR / "shared"
 CORE_DIR = SHARED_DIR / "core"
 DESKTOP_DIR = BASE_DIR / "old_desktop"
 WEB_DIR = BASE_DIR / "new_web"
-for path in (DESKTOP_DIR, CORE_DIR):
+SCRIPTS_DIR = BASE_DIR / "scripts"
+
+for path in (CORE_DIR, DESKTOP_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
@@ -82,12 +88,12 @@ class LauncherApp:
         if not req.exists():
             messagebox.showerror("MASS-AI", "requirements.txt was not found.")
             return
-        self.run_command([sys.executable, "-m", "pip", "install", "-r", str(req)], cwd=BASE_DIR)
+        self.run_command([sys.executable, "-m", "pip", "install", "-r", str(req)], cwd=PROJECT_ROOT)
 
     def run_smoke_tests(self):
-        target = BASE_DIR / "RUN_SMOKE_TESTS.bat"
+        target = SCRIPTS_DIR / "RUN_SMOKE_TESTS.bat"
         if sys.platform.startswith("win") and target.exists():
-            self.run_command(f'"{target}"', cwd=BASE_DIR)
+            self.run_command(f'"{target}"', cwd=PROJECT_ROOT)
             return
         self.run_command(
             [
@@ -101,7 +107,7 @@ class LauncherApp:
                 "test_*.py",
                 "-v",
             ],
-            cwd=BASE_DIR,
+            cwd=PROJECT_ROOT,
         )
 
     def build_windows_executable(self):

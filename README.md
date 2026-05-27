@@ -62,7 +62,7 @@ pip install -r shared/requirements.txt
 
 **Best experience:**
 ```bash
-python MASS_AI_LAUNCHER.py
+python apps/launcher/MASS_AI_LAUNCHER.py
 ```
 
 **Run the Streamlit dashboard directly:**
