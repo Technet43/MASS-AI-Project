@@ -152,3 +152,29 @@ def get_engine_scored_for_performance(engine_result: dict) -> dict:
         "scored_sample": scored.head(100) if not scored.empty else pd.DataFrame(),
         "engine_results": engine_result.get("engine_results", {}),
     }
+
+
+def extract_metrics_from_engine(engine_result: dict) -> dict:
+    """
+    Converts engine result into the metrics format expected by the current
+    (still partially legacy) dashboard performance rendering.
+    This is a transition helper to reduce duplication.
+    """
+    if not engine_result:
+        return {}
+
+    overview = engine_result.get("overview", {})
+    best_model = engine_result.get("best_model", "Stacking Ensemble")
+
+    metrics = {
+        "engine_mode": True,
+        "best_model": best_model,
+        "overview": overview,
+    }
+
+    # If the engine has detailed per-model results, expose them
+    engine_obj = engine_result.get("engine")
+    if engine_obj and hasattr(engine_obj, "results"):
+        metrics["engine_results"] = engine_obj.results
+
+    return metrics

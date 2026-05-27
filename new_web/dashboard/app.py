@@ -2527,17 +2527,10 @@ def main():
         try:
             from shared.core.dashboard_adapters import (
                 get_rich_scored_data_for_ui,
-                get_engine_performance_summary,
+                extract_metrics_from_engine,
             )
             features_df = get_rich_scored_data_for_ui(engine_data)
-            perf_summary = get_engine_performance_summary(engine_data)
-
-            metrics = {
-                "engine_mode": True,
-                "best_model": perf_summary.get("best_model", engine_data.get("best_model")),
-                "overview": engine_data.get("overview", {}),
-                "engine_results": engine_data.get("engine", {}).results if hasattr(engine_data.get("engine"), "results") else {},
-            }
+            metrics = extract_metrics_from_engine(engine_data)
             used_engine = True
         except Exception:
             # Fallback to old local function if something goes wrong
