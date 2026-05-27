@@ -753,65 +753,6 @@ def normalize_uploaded_raw_data(uploaded_df):
         "normalize_uploaded_raw_data is deprecated. "
         "Use shared/core/dashboard_adapters instead."
     )
-    """
-    timestamp_col = find_first_matching_column(
-        uploaded_df.columns,
-        ["timestamp", "datetime", "time", "date"],
-    )
-    if timestamp_col is None:
-        raise ValueError(get_translations()["simulation"]["upload_missing_timestamp"])
-
-    consumption_col = find_first_matching_column(
-        uploaded_df.columns,
-        ["consumption", "consumption_kw", "usage", "value", "reading", "energy"],
-    )
-    if consumption_col is None:
-        raise ValueError(get_translations()["simulation"]["upload_missing_consumption"])
-
-    customer_col = find_first_matching_column(
-        uploaded_df.columns,
-        ["customer_id", "customerid", "meter_id", "meterid", "id"],
-    )
-    profile_col = find_first_matching_column(
-        uploaded_df.columns,
-        ["profile", "customer_profile"],
-    )
-
-    normalized_df = pd.DataFrame()
-    normalized_df["timestamp"] = pd.to_datetime(uploaded_df[timestamp_col], errors="coerce")
-    normalized_df["consumption_kw"] = pd.to_numeric(
-        uploaded_df[consumption_col],
-        errors="coerce",
-    )
-
-    if customer_col is None:
-        normalized_df["customer_id"] = 0
-    else:
-        customer_values = uploaded_df[customer_col]
-        customer_numeric = pd.to_numeric(customer_values, errors="coerce")
-        if customer_numeric.notna().all():
-            normalized_df["customer_id"] = customer_numeric.round().astype(int)
-        else:
-            normalized_df["customer_id"] = pd.factorize(customer_values.astype(str))[0].astype(int)
-
-    if profile_col is None:
-        normalized_df["profile"] = "residential"
-    else:
-        normalized_df["profile"] = (
-            uploaded_df[profile_col]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .apply(lambda value: value if value in PROFILE_OPTIONS else "residential")
-        )
-
-    normalized_df = normalized_df.dropna(subset=["timestamp", "consumption_kw"])
-    normalized_df = normalized_df.sort_values(["customer_id", "timestamp"]).reset_index(drop=True)
-
-    if normalized_df.empty:
-        raise ValueError(get_translations()["simulation"]["upload_empty"])
-
-    return normalized_df
 
 
 def build_uploaded_features(raw_df):
@@ -824,70 +765,6 @@ def build_uploaded_features(raw_df):
         "build_uploaded_features is deprecated. "
         "Use shared/core/dashboard_adapters or engine methods instead."
     )
-        timestamps = pd.to_datetime(group["timestamp"])
-        daily_totals = (
-            group.set_index("timestamp")["consumption_kw"].resample("D").sum()
-        )
-
-        if daily_totals.empty:
-            daily_totals = pd.Series([consumption.sum()])
-
-        night_mask = timestamps.dt.hour.isin([0, 1, 2, 3, 4, 5])
-        day_mask = ~night_mask
-        weekend_mask = timestamps.dt.dayofweek >= 5
-        weekday_mask = ~weekend_mask
-
-        night_mean = consumption[night_mask].mean() if night_mask.any() else consumption.mean()
-        day_mean = consumption[day_mask].mean() if day_mask.any() else consumption.mean()
-        weekend_mean = (
-            consumption[weekend_mask].mean() if weekend_mask.any() else consumption.mean()
-        )
-        weekday_mean = (
-            consumption[weekday_mask].mean() if weekday_mask.any() else consumption.mean()
-        )
-
-        hourly_profile = group.groupby(timestamps.dt.hour)["consumption_kw"].mean()
-        peak_hour = int(hourly_profile.idxmax()) if not hourly_profile.empty else 0
-        diffs = consumption.diff().abs().fillna(0)
-        q25 = float(consumption.quantile(0.25))
-        q75 = float(consumption.quantile(0.75))
-        iqr = q75 - q25
-        trend_slope = (
-            float(np.polyfit(np.arange(len(consumption)), consumption.values, 1)[0])
-            if len(consumption) > 1
-            else 0.0
-        )
-
-        feature_rows.append(
-            {
-                "customer_id": customer_id,
-                "profile": group["profile"].mode().iloc[0] if "profile" in group else "residential",
-                "label": 0,
-                "theft_type": "none",
-                "mean_consumption": float(consumption.mean()),
-                "std_consumption": float(consumption.std(ddof=0)),
-                "min_consumption": float(consumption.min()),
-                "max_consumption": float(consumption.max()),
-                "median_consumption": float(consumption.median()),
-                "skewness": float(consumption.skew() if len(consumption) > 2 else 0.0),
-                "kurtosis": float(consumption.kurt() if len(consumption) > 3 else 0.0),
-                "mean_daily_total": float(daily_totals.mean()),
-                "std_daily_total": float(daily_totals.std(ddof=0)),
-                "cv_daily": float(daily_totals.std(ddof=0) / (daily_totals.mean() + 1e-8)),
-                "night_day_ratio": float(night_mean / (day_mean + 1e-8)),
-                "weekend_weekday_ratio": float(weekend_mean / (weekday_mean + 1e-8)),
-                "peak_hour": peak_hour,
-                "zero_measurement_pct": float((consumption <= 0.01).mean()),
-                "zero_day_pct": float((daily_totals <= 0.01).mean()),
-                "sudden_change_ratio": float(diffs.mean() / (consumption.mean() + 1e-8)),
-                "trend_slope": trend_slope,
-                "q25": q25,
-                "q75": q75,
-                "iqr": iqr,
-            }
-        )
-
-    return pd.DataFrame(feature_rows)
 
 
 def score_uploaded_features(reference_features_df, uploaded_features_df):
@@ -911,19 +788,6 @@ def build_simulation_customer_pool(simulation_df, selected_customer_id, n_custom
         "build_simulation_customer_pool is deprecated. "
         "Use shared/core/dashboard_adapters instead."
     )
-    selected_customer = simulation_df[simulation_df["customer_id"] == selected_customer_id].iloc[0]
-    remaining_customers = simulation_df[simulation_df["customer_id"] != selected_customer_id].copy()
-
-    sort_columns = []
-    ascending = []
-    if "theft_probability" in remaining_customers.columns:
-        sort_columns.append("theft_probability")
-        ascending.append(False)
-    if "customer_id" in remaining_customers.columns:
-        sort_columns.append("customer_id")
-        ascending.append(True)
-    if sort_columns:
-        remaining_customers = remaining_customers.sort_values(sort_columns, ascending=ascending)
 
     extra_customers = remaining_customers.head(max(n_customers - 1, 0))
     return pd.concat(
@@ -1136,15 +1000,6 @@ def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 12
     else:
         raw = pd.DataFrame()
     return features, raw
-    base = ROOT_DIR / "shared" / "data" / "processed"
-    features = pd.read_csv(base / "features.csv")
-    raw_path = base / "raw_consumption_sample.csv"
-    if raw_path.exists():
-        raw = pd.read_csv(raw_path)
-        raw["timestamp"] = pd.to_datetime(raw["timestamp"])
-    else:
-        raw = build_fallback_raw_data(features)
-    return features, raw
 
 
 @st.cache_data
@@ -1154,104 +1009,6 @@ def run_models(features_df):
     Tüm yeni geliştirme için shared/core/dashboard_adapters.py kullanın.
     """
     raise RuntimeError("run_models is deprecated. Use shared/core/dashboard_adapters instead.")
-    from sklearn.metrics import (
-        confusion_matrix,
-        f1_score,
-        precision_recall_curve,
-        roc_auc_score,
-        roc_curve,
-    )
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import StandardScaler
-
-    meta_cols = ["customer_id", "profile", "label", "theft_type"]
-    feature_cols = [column for column in features_df.columns if column not in meta_cols]
-    x_values = features_df[feature_cols].values
-    y_values = features_df["label"].values
-
-    scaler = StandardScaler()
-    x_scaled = scaler.fit_transform(x_values)
-
-    x_train, x_test, y_train, y_test, idx_train, idx_test = train_test_split(
-        x_scaled,
-        y_values,
-        np.arange(len(y_values)),
-        test_size=0.25,
-        random_state=42,
-        stratify=y_values,
-    )
-
-    iso = IsolationForest(n_estimators=200, contamination=0.12, random_state=42)
-    iso.fit(x_scaled)
-    iso_scores = -iso.score_samples(x_scaled)
-    iso_preds_all = (iso.predict(x_scaled) == -1).astype(int)
-
-    rf = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=8,
-        class_weight="balanced",
-        random_state=42,
-    )
-    rf.fit(x_train, y_train)
-    rf_probs_all = rf.predict_proba(x_scaled)[:, 1]
-    rf_preds_all = rf.predict(x_scaled)
-
-    rf_probs_test = rf.predict_proba(x_test)[:, 1]
-    rf_preds_test = rf.predict(x_test)
-    iso_scores_test = -iso.score_samples(x_test)
-    iso_preds_test = (iso.predict(x_test) == -1).astype(int)
-
-    rf_fpr, rf_tpr, _ = roc_curve(y_test, rf_probs_test)
-    iso_fpr, iso_tpr, _ = roc_curve(y_test, iso_scores_test)
-
-    rf_prec, rf_rec, _ = precision_recall_curve(y_test, rf_probs_test)
-    iso_prec, iso_rec, _ = precision_recall_curve(y_test, iso_scores_test)
-
-    rf_cm = confusion_matrix(y_test, rf_preds_test)
-    iso_cm = confusion_matrix(y_test, iso_preds_test)
-
-    rf_auc = roc_auc_score(y_test, rf_probs_test)
-    iso_auc = roc_auc_score(y_test, iso_scores_test)
-    rf_f1 = f1_score(y_test, rf_preds_test)
-    iso_f1 = f1_score(y_test, iso_preds_test)
-
-    importance = dict(zip(feature_cols, rf.feature_importances_))
-
-    features_df = features_df.copy()
-    features_df["anomaly_score"] = iso_scores
-    features_df["theft_probability"] = rf_probs_all
-    features_df["predicted_theft"] = rf_preds_all
-    features_df["risk_level"] = pd.cut(
-        features_df["theft_probability"],
-        bins=[0, 0.3, 0.6, 0.85, 1.0],
-        labels=RISK_OPTIONS,
-        include_lowest=True,
-    )
-    features_df["risk_level"] = features_df["risk_level"].astype(str)
-
-    metrics = {
-        "rf_fpr": rf_fpr,
-        "rf_tpr": rf_tpr,
-        "rf_auc": rf_auc,
-        "rf_f1": rf_f1,
-        "rf_cm": rf_cm,
-        "iso_fpr": iso_fpr,
-        "iso_tpr": iso_tpr,
-        "iso_auc": iso_auc,
-        "iso_f1": iso_f1,
-        "iso_cm": iso_cm,
-        "rf_prec": rf_prec,
-        "rf_rec": rf_rec,
-        "iso_prec": iso_prec,
-        "iso_rec": iso_rec,
-        "importance": importance,
-        "feature_cols": feature_cols,
-        "y_test": y_test,
-        "rf_probs_test": rf_probs_test,
-        "iso_scores_test": iso_scores_test,
-    }
-
-    return features_df, metrics
 
 
 def render_sidebar(features_df):
@@ -2232,7 +1989,14 @@ def render_live_simulation(df, raw_df):
         all_customer_ids,
     )
     selected_customer = simulation_df[simulation_df["customer_id"] == selected_customer_id].iloc[0]
-    sim_customers = build_simulation_customer_pool(simulation_df, selected_customer_id, n_customers)
+
+    # Use a simple safe fallback instead of the deprecated function
+    try:
+        sim_customers = simulation_df[simulation_df["customer_id"] != selected_customer_id].head(n_customers)
+        if len(sim_customers) == 0:
+            sim_customers = simulation_df.head(n_customers)
+    except Exception:
+        sim_customers = simulation_df.head(n_customers)
 
     st.markdown("---")
     st.markdown(f"#### {local_t['simulation']['upload_section_title']}")
@@ -2244,78 +2008,12 @@ def render_live_simulation(df, raw_df):
     )
 
     if uploaded_file is not None:
-        try:
-            uploaded_df = pd.read_csv(uploaded_file)
-            uploaded_raw = normalize_uploaded_raw_data(uploaded_df)
-            uploaded_features = build_uploaded_features(uploaded_raw)
-            uploaded_scored = score_uploaded_features(df, uploaded_features)
-
-            st.markdown(f"##### {local_t['simulation']['upload_results_title']}")
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-            high_risk_count = int((uploaded_scored["theft_probability"] >= 0.5).sum())
-            metric_col1.metric(local_t["simulation"]["upload_kpi_customers"], f"{len(uploaded_scored)}")
-            metric_col2.metric(local_t["simulation"]["upload_kpi_points"], f"{len(uploaded_raw)}")
-            metric_col3.metric(local_t["simulation"]["upload_kpi_anomalies"], f"{high_risk_count}")
-            metric_col4.metric(
-                local_t["simulation"]["upload_kpi_avg_risk"],
-                f"{uploaded_scored['theft_probability'].mean():.1%}",
-            )
-
-            chart_df = uploaded_scored.sort_values("theft_probability", ascending=False).copy()
-            chart_df["customer_label"] = chart_df["customer_id"].astype(str)
-            upload_fig = go.Figure(
-                go.Bar(
-                    x=chart_df["customer_label"],
-                    y=chart_df["theft_probability"],
-                    marker_color=[RISK_COLORS.get(level, "#999999") for level in chart_df["risk_level"]],
-                    text=[f"{value:.1%}" for value in chart_df["theft_probability"]],
-                    textposition="outside",
-                )
-            )
-            upload_fig.update_layout(
-                height=320,
-                margin=dict(l=20, r=20, t=40, b=20),
-                title=local_t["simulation"]["upload_chart_title"],
-                xaxis_title=local_t["simulation"]["uploaded_customer_axis"],
-                yaxis_title=local_t["simulation"]["uploaded_risk_axis"],
-                yaxis_range=[0, 1.05],
-            )
-            st.plotly_chart(upload_fig, use_container_width=True)
-
-            st.markdown(f"##### {local_t['simulation']['upload_table_title']}")
-            upload_display_df = uploaded_scored[
-                ["customer_id", "theft_probability", "anomaly_score", "risk_level", "predicted_theft"]
-            ].copy()
-            upload_display_df["theft_probability"] = upload_display_df["theft_probability"].apply(
-                lambda value: f"{value:.1%}"
-            )
-            upload_display_df["anomaly_score"] = upload_display_df["anomaly_score"].apply(
-                lambda value: f"{value:.4f}"
-            )
-            upload_display_df["risk_level"] = upload_display_df["risk_level"].apply(get_risk_label)
-            upload_display_df["predicted_theft"] = upload_display_df["predicted_theft"].apply(
-                lambda value: (
-                    local_t["simulation"]["uploaded_predicted_yes"]
-                    if int(value) == 1
-                    else local_t["simulation"]["uploaded_predicted_no"]
-                )
-            )
-            upload_display_df = upload_display_df.rename(
-                columns=local_t["simulation"]["uploaded_table_columns"]
-            )
-            st.dataframe(upload_display_df, use_container_width=True, height=260)
-
-            if st.button(
-                local_t["simulation"]["use_uploaded_button"],
-                type="secondary",
-                use_container_width=True,
-            ):
-                st.session_state["simulation_source"] = "uploaded"
-                st.session_state["simulation_features_override"] = uploaded_scored
-                st.session_state["simulation_raw_override"] = uploaded_raw
-                st.rerun()
-        except Exception as error:
-            st.error(local_t["simulation"]["upload_error"].format(error=str(error)))
+        st.info(
+            "Yüklenen dosya ile simülasyon şu anda bakım aşamasındadır. "
+            "Lütfen ana dashboard üzerinden engine ile sentetik veri kullanın veya "
+            "gerçek veri entegrasyonu için ekip ile iletişime geçin. "
+            "(Eski duplicate feature engineering kaldırıldı — yeni adaptör ile yeniden yazılacak.)"
+        )
 
     if st.button(local_t["simulation"]["start_button"], type="primary", use_container_width=True):
         metric_cols = st.columns(4)

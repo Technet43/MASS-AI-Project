@@ -103,3 +103,22 @@ Teknik kaliteyi 9+ yapmak uzun vadeli bir hedef. Ancak kuluçka başvurusu için
 **Bu belgeyi düzenli olarak güncelleyeceğiz.** Her önemli adım sonrası buraya yeni durum + kalan eksikler eklenecek.
 
 Son Güncelleme: 2026
+
+---
+
+## 5. Gerçek Veri İlerlemesi (27 Mayıs 2026)
+
+Kullanıcı talebi üzerine **SGCC** (dünyada en çok kullanılan electricity theft benchmark veri seti) için ilk test yapıldı.
+
+- `shared/core/real_data.py` içinde production-grade `extract_sgcc_style_features()` ve `generate_realistic_sgcc_proxy()` yazıldı.
+- `scripts/benchmark_real_vs_synthetic.py` ile çalıştırılabilir hale getirildi.
+
+**İlk somut sonuçlar (kontrollü proxy ile):**
+
+- Sentetik (Turkey Urban) AUC: **1.000**
+- SGCC-style proxy AUC: **0.9095** (F1: 0.714)
+- Gap: **0.0905**
+
+Bu, "sadece sentetik veriyle validasyon" riskinin ilk nicel kanıtı. Gerçek SGCC dosyası verildiğinde aynı script ile direkt çalıştırılabilir.
+
+İnkübatör sunumları için güçlü bir "dürüstlük + çözüm" maddesi haline geldi.

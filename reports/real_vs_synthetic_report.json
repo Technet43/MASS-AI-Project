@@ -1,0 +1,14 @@
+{
+  "synthetic_in_dist_auc": 0.9994,
+  "synthetic_in_dist_f1": 0.9697,
+  "sgcc_proxy_in_dist_auc": 0.9119,
+  "sgcc_proxy_in_dist_f1": 0.8,
+  "auc_gap": 0.0875,
+  "best_model_synthetic": "Random Forest",
+  "best_model_on_proxy": "Random Forest",
+  "note": "Bu sonuçlar sentetik veride eğitilen modellerin gerçekçi (SGCC benzeri) bir dağılım üzerinde nasıl performans gösterdiğini gösterir. Gerçek SGCC dosyasını verdiğinde aynı pipeline'ı gerçek veride çalıştırabiliriz.",
+  "n_synthetic": 900,
+  "n_real_proxy": 700,
+  "synthetic_preset": "Turkey Urban",
+  "timestamp": "2026-05-27T15:39:31"
+}
