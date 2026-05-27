@@ -985,31 +985,14 @@ def load_synthetic_via_engine(n_customers: int = 2000, n_days: int = 180, preset
 
 
 def get_engine_metrics_and_df(engine_result: dict | None):
-    """DEPRECATED - Use shared.core.dashboard_adapters instead."""
-    if not engine_result or "scored" not in engine_result:
-        return None, None
-
-    scored = engine_result["scored"].copy()
-    engine = engine_result.get("engine")
-
-    if "risk_category" in scored.columns:
-        scored["risk_level"] = scored["risk_category"].astype(str)
-    if "risk_score" in scored.columns and "theft_probability" not in scored.columns:
-        scored["theft_probability"] = scored["risk_score"] / 100.0
-    if "priority_index" in scored.columns:
-        scored["priority"] = scored["priority_index"]
-
-    metrics = {
-        "engine_mode": True,
-        "best_model": engine_result.get("best_model", "Stacking Ensemble"),
-        "overview": engine_result.get("overview", {}),
-        "feature_importance_available": False,
-    }
-
-    if engine and hasattr(engine, "results"):
-        metrics["engine_results"] = engine.results
-
-    return scored, metrics
+    """
+    DEPRECATED - This function is no longer used in main paths.
+    Use functions from shared.core.dashboard_adapters instead.
+    """
+    raise RuntimeError(
+        "get_engine_metrics_and_df is deprecated. "
+        "Use shared.core.dashboard_adapters instead."
+    )
 
 
 def prepare_simulation_data_from_engine(engine_scored_df):
