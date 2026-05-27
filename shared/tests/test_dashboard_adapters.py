@@ -67,6 +67,37 @@ class TestDashboardAdapters(unittest.TestCase):
             # The preset should be reflected in the data
             self.assertIn("synthetic_preset", result["scored"].columns)
 
+    def test_extract_metrics_from_engine_returns_expected_shape(self):
+        # We can't easily create a full engine result here without running heavy code,
+        # so we test the shape with a minimal fake dict
+        fake_result = {
+            "best_model": "Stacking Ensemble",
+            "overview": {
+                "high_risk_count": 12,
+                "customer_count": 100
+            }
+        }
+        from dashboard_adapters import extract_metrics_from_engine
+        metrics = extract_metrics_from_engine(fake_result)
+        self.assertTrue(metrics.get("engine_mode"))
+        self.assertEqual(metrics["best_model"], "Stacking Ensemble")
+
+    def test_get_scored_data_and_metrics_combines_helpers(self):
+        from dashboard_adapters import get_scored_data_and_metrics
+        fake_result = {
+            "scored": pd.DataFrame({
+                "customer_id": [1],
+                "risk_score": [75],
+                "risk_category": ["high"]
+            }),
+            "best_model": "Random Forest",
+            "overview": {"customer_count": 50}
+        }
+        scored, metrics = get_scored_data_and_metrics(fake_result)
+        self.assertFalse(scored.empty)
+        self.assertIn("risk_level", scored.columns)
+        self.assertTrue(metrics.get("engine_mode"))
+
 
 if __name__ == "__main__":
     unittest.main()
