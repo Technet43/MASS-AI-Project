@@ -1092,7 +1092,24 @@ def build_fallback_raw_data(features_df):
 
 
 @st.cache_data
-def load_data():
+def load_data(use_engine: bool = True, n_customers: int = 1500, n_days: int = 120, preset: str | None = None):
+    """
+    Preferred: Try to load via the real MassAIEngine from shared/core.
+    Falls back to pre-baked CSV in shared/data/processed if engine is unavailable
+    or the user explicitly wants the legacy dataset.
+    """
+    if use_engine:
+        result, error = load_synthetic_via_engine(n_customers=n_customers, n_days=n_days, preset=preset)
+        if result is not None and "scored" in result:
+            scored = result["scored"].copy()
+            # Ensure columns the dashboard expects
+            if "risk_level" not in scored.columns and "risk_category" in scored.columns:
+                scored["risk_level"] = scored["risk_category"].astype(str)
+            if "anomaly_score" not in scored.columns and "risk_score" in scored.columns:
+                scored["anomaly_score"] = scored["risk_score"]
+            return scored, None  # raw not strictly needed for most tabs when using engine
+
+    # Legacy / fallback path (pre-generated CSVs)
     base = ROOT_DIR / "shared" / "data" / "processed"
     features = pd.read_csv(base / "features.csv")
     raw_path = base / "raw_consumption_sample.csv"
@@ -2375,8 +2392,13 @@ def main():
         unsafe_allow_html=True,
     )
 
-    features_df, raw_df = load_data()
-    features_df, metrics = run_models(features_df)
+    # Prefer the real shared MassAIEngine (big step toward removing duplication)
+    features_df, raw_df = load_data(use_engine=True)
+    if raw_df is None:
+        # Engine path returned the scored dataframe directly (new preferred flow)
+        metrics = {}
+    else:
+        features_df, metrics = run_models(features_df)
     filtered_df, threshold = render_sidebar(features_df)
     local_t = get_translations()
 
