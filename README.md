@@ -312,7 +312,10 @@ The built-in data engine generates realistic Turkish smart meter data with no ex
 **Source of truth for ML logic:** `shared/core/mass_ai_engine.py` (MassAIEngine with 6 models + stacking + excellent Turkish synthetic generator).
 
 **Important (2026 update):**
-- We are actively reducing duplication. The large Streamlit dashboard (`new_web/dashboard/app.py`) is being migrated to use `shared/core` instead of re-implementing the engine.
+- **Active refactoring in progress**: The Streamlit dashboard is being migrated to use `shared/core/mass_ai_engine.py` as the single source of truth.
+  - load_data now prefers MassAIEngine
+  - Performance tab, sidebar status, and preset regeneration are wired to the engine
+  - Goal: Turn the 2400+ line dashboard file into a thin UI layer
 - Old duplicated code in `project/legacy_pipeline` and older sections should be treated as historical/research only.
 
 ```
