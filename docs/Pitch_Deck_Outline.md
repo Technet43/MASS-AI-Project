@@ -73,7 +73,13 @@
 - Ofis / altyapı desteği
 - Potansiyel yatırım / hibe bağlantıları
 
-### 11. Kapanış
+### 11. Riskler ve Çözüm Önerileri (Yeni Önerilen Slayt)
+- Sentetik veri riski → Gerçek veri ile pilot planı
+- İş modeli net değil → Pilot sırasında netleşecek
+- Rekabet → Peer analizi + yerel adaptasyon avantajı
+- Ekip → [Kısa ekip + danışman bilgisi]
+
+### 12. Kapanış
 - Tekrar ana mesaj
 - İletişim bilgileri
 - "Teşekkürler, sorularınızı bekliyorum"
