@@ -44,10 +44,10 @@ class MassAIEngineSmokeTests(unittest.TestCase):
 
     def test_csv_pipeline_with_missing_label_uses_fallback(self):
         rows = [
-            {"customer_id": 1, "mean_consumption": 2.5, "std_consumption": 0.4, "zero_measurement_pct": 0.01},
-            {"customer_id": 2, "mean_consumption": 7.8, "std_consumption": 1.2, "zero_measurement_pct": 0.32},
-            {"customer_id": 3, "mean_consumption": 5.1, "std_consumption": 0.6, "zero_measurement_pct": 0.08},
-            {"customer_id": 4, "mean_consumption": 9.4, "std_consumption": 1.8, "zero_measurement_pct": 0.45},
+            {"customer_id": 1, "mean_consumption": 2.5, "std_consumption": 0.4, "zero_measurement_pct": 0.01, "real_daily_column_count": 180},
+            {"customer_id": 2, "mean_consumption": 7.8, "std_consumption": 1.2, "zero_measurement_pct": 0.32, "real_daily_column_count": 180},
+            {"customer_id": 3, "mean_consumption": 5.1, "std_consumption": 0.6, "zero_measurement_pct": 0.08, "real_daily_column_count": 180},
+            {"customer_id": 4, "mean_consumption": 9.4, "std_consumption": 1.8, "zero_measurement_pct": 0.45, "real_daily_column_count": 180},
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -65,6 +65,7 @@ class MassAIEngineSmokeTests(unittest.TestCase):
         self.assertEqual(len(loaded), 4)
         self.assertEqual(len(scored), 4)
         self.assertEqual(results["Isolation Forest"]["type"], "Fallback")
+        self.assertNotIn("real_daily_column_count", engine.feature_cols)
         self.assertIn("risk_category", scored.columns)
         self.assertIn("risk_summary", scored.columns)
         self.assertTrue(set(scored["risk_category"].astype(str)).issubset(set(RISK_LABELS)))

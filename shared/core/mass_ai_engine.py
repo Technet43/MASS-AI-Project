@@ -487,7 +487,13 @@ class MassAIEngine:
         if callback:
             callback(64, "Preparing model features")
 
-        meta_cols = ["customer_id", "profile", "label", "theft_type"]
+        meta_cols = [
+            "customer_id",
+            "profile",
+            "label",
+            "theft_type",
+            "real_daily_column_count",
+        ]
         numeric_cols = self.df_features.select_dtypes(include=["number"]).columns.tolist()
         self.feature_cols = [col for col in numeric_cols if col not in meta_cols]
         if not self.feature_cols:

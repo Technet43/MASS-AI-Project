@@ -21,6 +21,7 @@ from real_data import (
     extract_sgcc_style_features,
     run_real_data_benchmark,
     generate_real_data_validation_report,
+    PROXY_DERIVED_FEATURES,
 )
 
 
@@ -59,6 +60,29 @@ class TestSGCCStyleFeatureExtraction(unittest.TestCase):
         self.assertIn("label", features.columns)
         self.assertIn("mean_consumption", features.columns)
         self.assertEqual(features["label"].tolist(), [0, 1, 0])
+
+    def test_extractor_marks_proxy_derived_features(self):
+        cols = {"CONS_NO": ["C001", "C002"], "FLAG": [0, 1]}
+        for i in range(35):
+            cols[f"2014/2/{i+1}"] = [1.0 + i * 0.02, 0.4 + i * 0.01]
+
+        features = extract_sgcc_style_features(pd.DataFrame(cols), label_col="FLAG", min_daily_cols=30)
+        self.assertIn("source_validation_level", features.columns)
+        self.assertIn("real_daily_column_count", features.columns)
+        self.assertIn("proxy_derived_features", features.columns)
+        self.assertEqual(features["real_daily_column_count"].iloc[0], 35)
+        for col in PROXY_DERIVED_FEATURES:
+            self.assertIn(col, features["proxy_derived_features"].iloc[0])
+
+    def test_extractor_is_deterministic_with_random_state(self):
+        cols = {"CONS_NO": ["C001", "C002"], "FLAG": [0, 1]}
+        for i in range(35):
+            cols[f"2014/3/{i+1}"] = [1.3 + i * 0.02, 0.6 + i * 0.01]
+
+        fake_df = pd.DataFrame(cols)
+        first = extract_sgcc_style_features(fake_df, label_col="FLAG", min_daily_cols=30, random_state=7)
+        second = extract_sgcc_style_features(fake_df, label_col="FLAG", min_daily_cols=30, random_state=7)
+        pd.testing.assert_frame_equal(first, second)
 
 
 class TestRealDataBenchmark(unittest.TestCase):

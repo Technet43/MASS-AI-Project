@@ -33,6 +33,27 @@ except ImportError:
     from mass_ai_engine import MassAIEngine, SYNTHETIC_PRESETS
 
 
+PROXY_DERIVED_FEATURES = [
+    "night_day_ratio",
+    "weekend_weekday_ratio",
+    "peak_offpeak_ratio",
+    "morning_noon_ratio",
+    "baseload_ratio",
+    "peak_hour",
+    "temperature_sensitivity",
+    "solar_relief_factor",
+    "meter_age_years",
+    "contract_demand_kw",
+    "outage_event_count",
+    "tamper_event_count",
+    "days_since_last_tamper",
+    "tamper_density",
+    "transformer_id",
+    "feeder_id",
+    "transformer_loss_pct",
+]
+
+
 # =============================================================================
 # SGCC-STYLE DAILY TIMESERIES → MASS-AI FEATURE MAPPER
 # =============================================================================
@@ -147,6 +168,7 @@ def extract_sgcc_style_features(
         else:
             cust_ids = [f"SGCC-{i:05d}" for i in range(len(df))]
 
+    rng = np.random.default_rng(random_state)
     rows = []
     for idx in range(len(df)):
         row = df.iloc[idx]
@@ -156,18 +178,18 @@ def extract_sgcc_style_features(
         mean_c = stats["mean"]
         # Approximate ratios (real SGCC rarely has hourly; we use coarse proxies)
         # In practice SGCC papers often only have daily totals, so many fine ratios become noisy.
-        night_day = 0.6 + np.random.normal(0, 0.15)  # typical published ranges
-        weekend_week = 0.95 + np.random.normal(0, 0.12)
-        peak_offpeak = 1.35 + np.random.normal(0, 0.25)
-        morning_noon = 0.92 + np.random.normal(0, 0.18)
-        baseload_r = 0.28 + np.random.normal(0, 0.07)
+        night_day = 0.6 + rng.normal(0, 0.15)  # typical published ranges
+        weekend_week = 0.95 + rng.normal(0, 0.12)
+        peak_offpeak = 1.35 + rng.normal(0, 0.25)
+        morning_noon = 0.92 + rng.normal(0, 0.18)
+        baseload_r = 0.28 + rng.normal(0, 0.07)
         load_factor = mean_c / (stats["max"] + 1e-8) if stats["max"] > 0 else 0.4
         event_spike = min(0.12, max(0.01, stats["zero_pct"] * 0.6 + stats["cv"] * 0.3))
 
         # Operational proxies (real data rarely has these; engine tolerates 0 / median)
-        meter_age = int(np.random.choice([3, 5, 7, 9, 12], p=[0.15, 0.25, 0.3, 0.2, 0.1]))
-        contract_kw = mean_c * np.random.uniform(8, 18)
-        outage_cnt = int(max(0, np.random.poisson(1.2)))
+        meter_age = int(rng.choice([3, 5, 7, 9, 12], p=[0.15, 0.25, 0.3, 0.2, 0.1]))
+        contract_kw = mean_c * rng.uniform(8, 18)
+        outage_cnt = int(max(0, rng.poisson(1.2)))
 
         rows.append({
             "customer_id": cust_ids[idx] if isinstance(cust_ids, (list, pd.Series)) else cust_ids,
@@ -191,7 +213,7 @@ def extract_sgcc_style_features(
             "zero_measurement_pct": round(stats["zero_pct"], 4),
             "sudden_change_ratio": round(stats["sudden_change_ratio"], 4),
             "trend_slope": round(stats["trend_slope"], 6),
-            "peak_hour": int(np.random.randint(17, 22)),
+            "peak_hour": int(rng.integers(17, 22)),
             "iqr": round(stats["iqr"], 4),
             "weekend_weekday_ratio": round(max(0.4, min(2.2, weekend_week)), 4),
             "peak_offpeak_ratio": round(max(0.6, min(3.0, peak_offpeak)), 4),
@@ -202,14 +224,14 @@ def extract_sgcc_style_features(
             "billing_volatility": round(stats["std"] * 0.9, 4),
             "rolling_weekly_volatility": round(stats["std"] * 1.1, 4),
             "anomaly_burst_ratio": round(min(0.35, stats["cv"] * 0.6), 4),
-            "temperature_sensitivity": round(np.random.uniform(-0.25, 0.35), 4),
-            "solar_relief_factor": round(np.random.uniform(0.0, 0.18), 4),
+            "temperature_sensitivity": round(rng.uniform(-0.25, 0.35), 4),
+            "solar_relief_factor": round(rng.uniform(0.0, 0.18), 4),
             "meter_age_years": meter_age,
             "contract_demand_kw": round(contract_kw, 2),
             "outage_event_count": outage_cnt,
-            "tamper_event_count": int(np.random.poisson(1.8)),
-            "days_since_last_tamper": int(np.random.randint(5, 90)),
-            "tamper_density": round(np.random.uniform(0.02, 0.18), 3),
+            "tamper_event_count": int(rng.poisson(1.8)),
+            "days_since_last_tamper": int(rng.integers(5, 90)),
+            "tamper_density": round(rng.uniform(0.02, 0.18), 3),
         })
 
     out = pd.DataFrame(rows)
@@ -218,12 +240,12 @@ def extract_sgcc_style_features(
     n = len(out)
     n_tr = max(8, n // 35)
     trafo_ids = [f"TR-{i % n_tr + 1:03d}" for i in range(n)]
-    np.random.shuffle(trafo_ids)
+    rng.shuffle(trafo_ids)
     out["transformer_id"] = trafo_ids
     out["feeder_id"] = [f"FD-{(int(t.split('-')[1]) - 1) // max(n_tr // 4, 1) + 1:02d}" for t in trafo_ids]
 
     trafo_totals = out.groupby("transformer_id")["mean_consumption"].transform("sum")
-    out["transformer_loss_pct"] = np.round(np.random.uniform(2.5, 7.0, n), 2)
+    out["transformer_loss_pct"] = np.round(rng.uniform(2.5, 7.0, n), 2)
     out["customer_share_of_loss"] = np.round(out["mean_consumption"] / (trafo_totals + 1e-8) * 100, 2)
     out["transformer_peer_count"] = out.groupby("transformer_id")["customer_id"].transform("count")
 
@@ -239,6 +261,10 @@ def extract_sgcc_style_features(
     out["is_ramadan_period"] = 0
     out["is_bayram_week"] = 0
     out["seasonal_anomaly_flag"] = 0
+
+    out["source_validation_level"] = "L2-compatible-real-input"
+    out["real_daily_column_count"] = len(daily_cols)
+    out["proxy_derived_features"] = ", ".join(PROXY_DERIVED_FEATURES)
 
     # Ensure label exists
     if "label" not in out.columns:

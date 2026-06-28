@@ -64,10 +64,12 @@
 - `new_web/dashboard/app.py` hâlâ çok kalın ve içinde duplicate mantık var.
 - Kod tabanı "araştırma projesi" havasından tam çıkmadı.
 - Production-ready olma seviyesi düşük.
+- Dockerfile, Compose ve Makefile ile tekrar üretilebilir lokal deployment eklendi; buna rağmen auth, monitoring, structured logging ve staging ortamı hâlâ eksik.
 
 ### D. Traction ve Doğrulama
 - Her şey sentetik veri üzerine kurulu.
 - Gerçek veri ile en azından küçük ölçekli bir temas yok.
+- SGCC-style proxy benchmark var, ancak gerçek public SGCC dosyasıyla veya Türk DSO verisiyle rapor hâlâ gerekli.
 
 ### E. Sunum ve İletişim
 - Profesyonel bir Pitch Deck henüz yok (sadece outline var).
@@ -84,6 +86,8 @@
 | 3 | Pitch Deck'in içeriğini güçlendir (özellikle Problem, Solution, Business Model, Traction) | Sunum | Başvurunun kalbi |
 | 4 | Dashboard'daki en ağır duplicate kodları temizle | Teknik | Profesyonellik algısı |
 | 5 | En az 2-3 dağıtım şirketiyle görüşme başlat (hatta niyet mektubu hedefle) | Traction | En güçlü sinyal |
+| 6 | Public SGCC dosyasıyla gerçek benchmark üret | Teknik/Validasyon | Proxy eleştirisini kapatır |
+| 7 | PR-AUC, precision@K, recall@K ve threshold analizi ekle | Teknik/Ürün | Saha operasyonuna yakın metrik sağlar |
 
 ---
 

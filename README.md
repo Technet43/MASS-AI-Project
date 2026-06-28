@@ -33,6 +33,8 @@ In May 2026, a major focus was adding proper support for **real public datasets*
 
 We built a complete integration layer for the SGCC electricity theft dataset (the most common academic benchmark).
 
+**Important validation note:** the default committed benchmark uses an SGCC-style realistic proxy, not a downloaded public SGCC file. This is useful for measuring domain-shift risk, but it is not a final real-world claim. A real SGCC CSV or Turkish DSO pilot dataset is still required before production or field-performance claims.
+
 **Benchmark Results (May 2026):**
 
 | Dataset                    | AUC    | F1     |
@@ -47,6 +49,11 @@ See [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md)
 ```bash
 python scripts/benchmark_real_vs_synthetic.py
 ```
+
+For stricter validation rules, see:
+
+- [docs/REAL_DATA_REQUIREMENTS.md](docs/REAL_DATA_REQUIREMENTS.md)
+- [docs/MODEL_VALIDATION.md](docs/MODEL_VALIDATION.md)
 
 ---
 
@@ -84,6 +91,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ```bash
 pip install -r shared/requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ### Running
@@ -98,10 +106,27 @@ python apps/launcher/MASS_AI_LAUNCHER.py
 streamlit run new_web/dashboard/app.py
 ```
 
+**Docker:**
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:8501`.
+
 ### Tests
 
 ```bash
 python -m pytest shared/tests/ -v
+```
+
+### Common Commands
+
+```bash
+make install
+make test
+make coverage
+make benchmark
+make dashboard
 ```
 
 ---
@@ -118,6 +143,11 @@ During an extended work session in May 2026, the following materials were prepar
 
 See [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md).
 
+Operational readiness documents:
+
+- [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)
+- [docs/PILOT_DATA_REQUEST.md](docs/PILOT_DATA_REQUEST.md)
+
 ---
 
 ## Current Status
@@ -126,6 +156,14 @@ See [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md).
 - Real data gap measured and documented
 - 39 tests passing
 - Strong documentation for incubation
+- Docker-based local deployment added
+
+## Remaining Critical Gaps
+
+- Public real SGCC or Turkish DSO pilot benchmark is still needed.
+- `new_web/dashboard/app.py` remains large and should be split further.
+- Model reporting should add PR-AUC, precision@K, recall@K, calibration, and threshold analysis.
+- Pilot traction is not proven until at least one partner reviews real or anonymized operational data.
 
 The project is in a much cleaner and more honest state than earlier in 2026.
 

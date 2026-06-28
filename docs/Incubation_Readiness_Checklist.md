@@ -7,7 +7,10 @@
 - [x] Legacy/deprecated fonksiyonlar büyük ölçüde kaldırıldı (run_models, eski upload/simulation helper'ları vb.)
 - [x] Tüm ana akışlar engine + dashboard_adapters üzerinden çalışıyor
 - [x] 39 test stabil ve yeşil
+- [x] Dockerfile + Docker Compose ile tekrar üretilebilir lokal deployment eklendi
+- [x] Dev/test bağımlılıkları `requirements-dev.txt` altında ayrıldı
 - [ ] Daha fazla test (özellikle entegrasyon ve edge case'ler) eklenebilir (devam edilebilir)
+- [ ] `new_web/dashboard/app.py` hâlâ büyük; sayfa/section/helper modüllerine ayrılmalı
 
 ## 2. Gerçek Veri & Validasyon (En Kritik Risk)
 - [x] SGCC-style real data entegrasyon katmanı üretildi (`real_data.py`)
@@ -15,6 +18,9 @@
 - [x] İlk kontrollü benchmark tamamlandı: ~0.09 AUC gap ölçüldü
 - [x] Gerçek veri sonuçları dashboard'da görünür hale getirildi (sidebar + performance)
 - [x] `Real_Data_Validation_Summary.md` ve raporlar hazır
+- [x] Proxy, gerçek benchmark ve pilot seviyelerini ayıran `REAL_DATA_REQUIREMENTS.md` eklendi
+- [x] PR-AUC / Precision@K / Recall@K / threshold odaklı `MODEL_VALIDATION.md` eklendi
+- [ ] Public SGCC dosyasıyla gerçek benchmark çıktısı commitlenmeli
 - [ ] Gerçek bir Türk dağıtım şirketi verisi ile pilot çalışması (hedef)
 
 ## 3. İnkübatör Malzemeleri
@@ -34,11 +40,13 @@
 - [x] Kalan legacy yorumlar dashboard kodundan temizlendi (Mayıs 2026 son temizlik dalgası)
 
 ## 5. Sonraki Önerilen Adımlar (Öncelik Sırasıyla)
-1. Ekip anlatımını netleştir (en kritik eksik)
-2. Gerçek bir dağıtım şirketiyle ilk görüşme / NDA hedefle
-3. Pitch Deck'i PowerPoint'e taşı (görsellerle güçlendir)
-4. Dashboard'daki son küçük legacy yorumları temizle
-5. Daha fazla test ekle (özellikle real data ve simulation)
+1. Public SGCC veya partner datasıyla L2/L3 gerçek benchmark üret
+2. Ekip anlatımını netleştir (en kritik sunum eksiklerinden biri)
+3. Gerçek bir dağıtım şirketiyle ilk görüşme / NDA hedefle
+4. Dashboard'u daha küçük modüllere ayır
+5. Model raporlarına PR-AUC, precision@K, recall@K ve threshold analizi ekle
+6. Pitch Deck'i PowerPoint'e taşı (görsellerle güçlendir)
+7. Daha fazla test ekle (özellikle real data ve simulation)
 
 ---
 **Son Güncelleme**: Mayıs 2026 (bu uzun derin çalışma oturumu sırasında)

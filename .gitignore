@@ -28,6 +28,7 @@ ENV/
 node_modules/
 .vercel/
 coverage/
+artifacts/
 project/artifacts/
 project/build/
 project/dist/
@@ -39,6 +40,10 @@ build/
 dist/
 
 # Large processed data (use Git LFS for these)
+shared/data/processed/*.csv
+shared/data/**/*.pkl
+shared/data/**/*.h5
+shared/data/**/*.npz
 project/data/processed/*.csv
 project/data/maps/*.csv
 project/data/**/*.pkl
@@ -46,6 +51,9 @@ project/data/**/*.h5
 project/data/**/*.npz
 
 # Trained model artifacts
+models/**/*.pkl
+models/**/*.h5
+models/**/*.joblib
 project/models/**/*.pkl
 project/models/**/*.h5
 project/models/**/*.joblib
