@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -284,6 +284,24 @@ def load_and_convert_sgcc(
     return extract_sgcc_style_features(df, label_col=label_col, sample_size=sample_size, random_state=random_state)
 
 
+def _model_metric_snapshot(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "auc": float(metrics.get("auc", 0.0) or 0.0),
+        "pr_auc": float(metrics.get("pr_auc", 0.0) or 0.0),
+        "f1": float(metrics.get("f1", 0.0) or 0.0),
+        "precision": float(metrics.get("precision", 0.0) or 0.0),
+        "recall": float(metrics.get("recall", 0.0) or 0.0),
+        "precision_at_k": float(metrics.get("precision_at_k", 0.0) or 0.0),
+        "recall_at_k": float(metrics.get("recall_at_k", 0.0) or 0.0),
+        "evaluation_k": int(metrics.get("evaluation_k", 0) or 0),
+        "threshold": float(metrics.get("threshold", 0.5) or 0.5),
+        "brier_score": float(metrics.get("brier_score", 0.0) or 0.0),
+        "calibration_error": float(metrics.get("calibration_error", 0.0) or 0.0),
+        "threshold_confusion_matrix": metrics.get("threshold_confusion_matrix", {"tn": 0, "fp": 0, "fn": 0, "tp": 0}),
+        "calibration_curve": metrics.get("calibration_curve", []),
+    }
+
+
 # =============================================================================
 # REALISTIC DOMAIN-SHIFT PROXY (for immediate testing without the real file)
 # =============================================================================
@@ -437,15 +455,12 @@ def run_real_data_benchmark(
     - How well do the *same models* perform on a realistic SGCC-style distribution?
     - What is the drop? (this drop is the risk we must close with real data + adaptation)
     """
-    from sklearn.metrics import roc_auc_score
-
     print("[REAL-DATA] Generating synthetic baseline (Turkey Urban)...")
     engine_syn = MassAIEngine()
     engine_syn.generate_synthetic(n_customers=n_synthetic, n_days=180, preset_name=preset)
     engine_syn.train_models()
     syn_best = engine_syn.best_model_name()
-    syn_auc = float(engine_syn.results.get(syn_best, {}).get("auc", 0.0))
-    syn_f1 = float(engine_syn.results.get(syn_best, {}).get("f1", 0.0))
+    syn_metrics = _model_metric_snapshot(engine_syn.results.get(syn_best, {}))
 
     print("[REAL-DATA] Generating realistic SGCC-style proxy (domain shift simulation)...")
     real_proxy = generate_realistic_sgcc_proxy(n_customers=n_real_proxy, random_state=random_state + 11)
@@ -455,18 +470,39 @@ def run_real_data_benchmark(
     engine_real.df_features = real_proxy.copy()
     engine_real.train_models()
     real_best = engine_real.best_model_name()
-    real_auc = float(engine_real.results.get(real_best, {}).get("auc", 0.0))
-    real_f1 = float(engine_real.results.get(real_best, {}).get("f1", 0.0))
+    real_metrics = _model_metric_snapshot(engine_real.results.get(real_best, {}))
 
     # Simple gap metric: how much worse the "real" distribution is for a model trained the same way
-    gap = round(syn_auc - real_auc, 4)
+    gap = round(syn_metrics["auc"] - real_metrics["auc"], 4)
 
     report = {
-        "synthetic_in_dist_auc": round(syn_auc, 4),
-        "synthetic_in_dist_f1": round(syn_f1, 4),
-        "sgcc_proxy_in_dist_auc": round(real_auc, 4),
-        "sgcc_proxy_in_dist_f1": round(real_f1, 4),
+        "synthetic_in_dist_auc": round(syn_metrics["auc"], 4),
+        "synthetic_in_dist_pr_auc": round(syn_metrics["pr_auc"], 4),
+        "synthetic_in_dist_precision": round(syn_metrics["precision"], 4),
+        "synthetic_in_dist_recall": round(syn_metrics["recall"], 4),
+        "synthetic_in_dist_f1": round(syn_metrics["f1"], 4),
+        "synthetic_in_dist_precision_at_k": round(syn_metrics["precision_at_k"], 4),
+        "synthetic_in_dist_recall_at_k": round(syn_metrics["recall_at_k"], 4),
+        "synthetic_in_dist_brier_score": round(syn_metrics["brier_score"], 4),
+        "synthetic_in_dist_calibration_error": round(syn_metrics["calibration_error"], 4),
+        "synthetic_in_dist_evaluation_k": syn_metrics["evaluation_k"],
+        "synthetic_in_dist_threshold": syn_metrics["threshold"],
+        "sgcc_proxy_in_dist_auc": round(real_metrics["auc"], 4),
+        "sgcc_proxy_in_dist_pr_auc": round(real_metrics["pr_auc"], 4),
+        "sgcc_proxy_in_dist_precision": round(real_metrics["precision"], 4),
+        "sgcc_proxy_in_dist_recall": round(real_metrics["recall"], 4),
+        "sgcc_proxy_in_dist_f1": round(real_metrics["f1"], 4),
+        "sgcc_proxy_in_dist_precision_at_k": round(real_metrics["precision_at_k"], 4),
+        "sgcc_proxy_in_dist_recall_at_k": round(real_metrics["recall_at_k"], 4),
+        "sgcc_proxy_in_dist_brier_score": round(real_metrics["brier_score"], 4),
+        "sgcc_proxy_in_dist_calibration_error": round(real_metrics["calibration_error"], 4),
+        "sgcc_proxy_in_dist_evaluation_k": real_metrics["evaluation_k"],
+        "sgcc_proxy_in_dist_threshold": real_metrics["threshold"],
         "auc_gap": gap,
+        "pr_auc_gap": round(syn_metrics["pr_auc"] - real_metrics["pr_auc"], 4),
+        "precision_at_k_gap": round(syn_metrics["precision_at_k"] - real_metrics["precision_at_k"], 4),
+        "recall_at_k_gap": round(syn_metrics["recall_at_k"] - real_metrics["recall_at_k"], 4),
+        "calibration_error_gap": round(syn_metrics["calibration_error"] - real_metrics["calibration_error"], 4),
         "best_model_synthetic": syn_best,
         "best_model_on_proxy": real_best,
         "note": "Bu sonuçlar sentetik veride eğitilen modellerin gerçekçi (SGCC benzeri) bir dağılım üzerinde nasıl performans gösterdiğini gösterir. Gerçek SGCC dosyasını verdiğinde aynı pipeline'ı gerçek veride çalıştırabiliriz.",
@@ -487,12 +523,15 @@ def quick_sgcc_test(path: Optional[str | Path] = None, sample: int = 600) -> dic
         eng.df_features = features
         eng.train_models()
         scored = eng.score_customers()
-        from sklearn.metrics import roc_auc_score
-        auc = roc_auc_score(features["label"], scored["theft_probability"])
+        metrics = eng._evaluate_model_metrics(features["label"].to_numpy(), scored["theft_probability"].to_numpy())
         return {
             "source": "real_sgcc_file",
             "n": len(features),
-            "auc_on_real": round(float(auc), 4),
+            "auc_on_real": round(metrics["auc"], 4),
+            "pr_auc_on_real": round(metrics["pr_auc"], 4),
+            "precision_at_k_on_real": round(metrics["precision_at_k"], 4),
+            "recall_at_k_on_real": round(metrics["recall_at_k"], 4),
+            "calibration_error_on_real": round(metrics["calibration_error"], 4),
             "best_model": eng.best_model_name(),
         }
     else:
@@ -517,6 +556,34 @@ def generate_real_data_validation_report(
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    def _fmt(value: Any, digits: int = 4, suffix: str = "") -> str:
+        if value in (None, "", "-"):
+            return "-"
+        try:
+            return f"{float(value):.{digits}f}{suffix}"
+        except (TypeError, ValueError):
+            return str(value)
+
+    def _fmt_k_value(value: Any, k_value: Any) -> str:
+        formatted = _fmt(value, digits=4)
+        if formatted == "-":
+            return "-"
+        if k_value in (None, "", "-"):
+            return formatted
+        return f"{formatted} (K={int(k_value)})"
+
+    def _metric_row(label: str, synthetic_key: str, proxy_key: str, gap_key: str | None = None, digits: int = 4, k_key: str | None = None) -> str:
+        synthetic_value = benchmark_result.get(synthetic_key, "-")
+        proxy_value = benchmark_result.get(proxy_key, "-")
+        gap_value = benchmark_result.get(gap_key, "-") if gap_key else "-"
+        if k_key:
+            synthetic_text = _fmt_k_value(synthetic_value, benchmark_result.get(f"synthetic_{k_key}"))
+            proxy_text = _fmt_k_value(proxy_value, benchmark_result.get(f"sgcc_proxy_{k_key}"))
+        else:
+            synthetic_text = _fmt(synthetic_value, digits=digits)
+            proxy_text = _fmt(proxy_value, digits=digits)
+        return f"| {label:<35} | {synthetic_text:<25} | {proxy_text:<16} | {_fmt(gap_value, digits=digits):<10} |"
+
     lines = [
         "# MASS-AI — Gerçek Veri Validasyon Raporu (İlk Kontrollü Test)",
         "",
@@ -528,18 +595,28 @@ def generate_real_data_validation_report(
         "",
         "| Metrik                              | Sentetik (Kendi Dağılımı) | SGCC-Style Proxy | Fark (Gap) |",
         "|-------------------------------------|---------------------------|------------------|------------|",
-        f"| AUC                                 | {benchmark_result.get('synthetic_in_dist_auc', '-')}                  | {benchmark_result.get('sgcc_proxy_in_dist_auc', '-')}           | {benchmark_result.get('auc_gap', '-')}       |",
-        f"| F1                                  | {benchmark_result.get('synthetic_in_dist_f1', '-')}                  | {benchmark_result.get('sgcc_proxy_in_dist_f1', '-')}           | -          |",
+        _metric_row("ROC-AUC", "synthetic_in_dist_auc", "sgcc_proxy_in_dist_auc", "auc_gap"),
+        _metric_row("PR-AUC", "synthetic_in_dist_pr_auc", "sgcc_proxy_in_dist_pr_auc", "pr_auc_gap"),
+        _metric_row("Precision", "synthetic_in_dist_precision", "sgcc_proxy_in_dist_precision"),
+        _metric_row("Recall", "synthetic_in_dist_recall", "sgcc_proxy_in_dist_recall"),
+        _metric_row("F1", "synthetic_in_dist_f1", "sgcc_proxy_in_dist_f1"),
+        _metric_row("Precision@K", "synthetic_in_dist_precision_at_k", "sgcc_proxy_in_dist_precision_at_k", "precision_at_k_gap", k_key="in_dist_evaluation_k"),
+        _metric_row("Recall@K", "synthetic_in_dist_recall_at_k", "sgcc_proxy_in_dist_recall_at_k", "recall_at_k_gap", k_key="in_dist_evaluation_k"),
+        _metric_row("Brier Skoru", "synthetic_in_dist_brier_score", "sgcc_proxy_in_dist_brier_score", digits=4),
+        _metric_row("Kalibrasyon Hatası", "synthetic_in_dist_calibration_error", "sgcc_proxy_in_dist_calibration_error", "calibration_error_gap", digits=4),
         "",
         f"**En iyi model (sentetik):** {benchmark_result.get('best_model_synthetic', '-')}",
         f"**En iyi model (proxy):** {benchmark_result.get('best_model_on_proxy', '-')}",
+        f"**Threshold:** {_fmt(benchmark_result.get('synthetic_in_dist_threshold', benchmark_result.get('sgcc_proxy_in_dist_threshold', 0.5)), digits=2)}",
+        f"**Top-K size:** synthetic={benchmark_result.get('synthetic_in_dist_evaluation_k', '-')}, proxy={benchmark_result.get('sgcc_proxy_in_dist_evaluation_k', '-')}",
         "",
         "## Yorum ve İnkübatör Mesajı",
         "",
         "Bu test, 'sadece sentetik veriyle mi çalışıyorsunuz?' sorusuna verdiğimiz ilk somut cevaptır.",
         "",
-        "- Sentetik veride model kendi dağılımında çok güçlü performans gösteriyor (AUC 1.0).",
-        "- Gerçekçi SGCC-style dağılıma geçtiğimizde performans doğal olarak düşüyor (AUC 0.91).",
+        "- Sentetik veride model kendi dağılımında çok güçlü performans gösteriyor.",
+        "- Gerçekçi SGCC-style dağılıma geçtiğimizde performans doğal olarak düşüyor.",
+        "- PR-AUC, top-K ve kalibrasyon metrikleri, saha önceliklendirmesine daha yakın bir tablo veriyor.",
         "- Bu düşüş (gap) beklenen bir durumdur. Önemli olan bu gap'i **ölçüyor** olmamız ve gerçek veriyle kapatma planımızın olmasıdır.",
         "",
         "**Sonraki Adım:** Gerçek bir SGCC veya Türk dağıtım şirketi veri seti ile aynı pipeline çalıştırıldığında bu gap'in ne kadar kapandığını göreceğiz.",

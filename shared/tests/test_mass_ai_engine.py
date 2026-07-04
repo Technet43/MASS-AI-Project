@@ -127,6 +127,35 @@ class MassAIEngineSmokeTests(unittest.TestCase):
         if "Stacking Ensemble" in results:
             self.assertGreater(results["Stacking Ensemble"].get("auc", 0), 0.5)
 
+    def test_train_models_exposes_operational_metrics(self):
+        engine = MassAIEngine()
+        engine.generate_synthetic(n_customers=120, n_days=40)
+        results = engine.train_models()
+        best_model = engine.best_model_name()
+        best_metrics = results[best_model]
+
+        for key in [
+            "pr_auc",
+            "precision",
+            "recall",
+            "precision_at_k",
+            "recall_at_k",
+            "evaluation_k",
+            "threshold",
+            "brier_score",
+            "calibration_error",
+            "threshold_confusion_matrix",
+            "calibration_curve",
+        ]:
+            self.assertIn(key, best_metrics)
+
+        engine.score_customers()
+        overview = engine.build_overview()
+        self.assertIn("best_model_performance", overview)
+        self.assertIn("pr_auc", overview["best_model_performance"])
+        self.assertGreaterEqual(overview["best_model_performance"]["auc"], 0.0)
+        self.assertLessEqual(overview["best_model_performance"]["auc"], 1.0)
+
     def test_score_customers_produces_expected_columns(self):
         engine = MassAIEngine()
         engine.generate_synthetic(n_customers=80, n_days=30)

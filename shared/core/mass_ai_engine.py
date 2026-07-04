@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, IsolationForest, RandomForestClassifier, StackingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import f1_score, roc_auc_score
+from sklearn.metrics import average_precision_score, brier_score_loss, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
@@ -36,6 +36,10 @@ except ImportError:
     )
 
 DEFAULT_SYNTHETIC_PRESET = "Turkey Urban"
+DEFAULT_EVAL_THRESHOLD = 0.5
+DEFAULT_QUEUE_FRACTION = 0.10
+MIN_EVAL_QUEUE_SIZE = 20
+CALIBRATION_BINS = 10
 THEFT_PATTERNS = [
     "constant_reduction",
     "night_zeroing",
@@ -158,6 +162,114 @@ class MassAIEngine:
         if self.results:
             return "Isolation Forest"
         return "No model yet"
+
+    def _evaluation_queue_size(self, sample_size: int) -> int:
+        if sample_size <= 0:
+            return 0
+        target = int(np.ceil(sample_size * DEFAULT_QUEUE_FRACTION))
+        return min(sample_size, max(MIN_EVAL_QUEUE_SIZE, target))
+
+    def _calibration_profile(self, y_true: np.ndarray, scores: np.ndarray) -> dict[str, Any]:
+        if len(y_true) == 0:
+            return {"expected_calibration_error": 0.0, "curve": []}
+
+        clipped_scores = np.clip(np.asarray(scores, dtype=float), 0.0, 1.0)
+        labels = np.asarray(y_true, dtype=int)
+        bins = np.linspace(0.0, 1.0, CALIBRATION_BINS + 1)
+        bin_ids = np.clip(np.digitize(clipped_scores, bins[1:-1], right=True), 0, CALIBRATION_BINS - 1)
+
+        curve: list[dict[str, Any]] = []
+        expected_calibration_error = 0.0
+        for bin_index in range(CALIBRATION_BINS):
+            mask = bin_ids == bin_index
+            if not np.any(mask):
+                continue
+            mean_predicted = float(clipped_scores[mask].mean())
+            fraction_positive = float(labels[mask].mean())
+            weight = float(mask.sum() / len(labels))
+            expected_calibration_error += abs(mean_predicted - fraction_positive) * weight
+            curve.append(
+                {
+                    "bin": int(bin_index),
+                    "count": int(mask.sum()),
+                    "mean_predicted": round(mean_predicted, 4),
+                    "fraction_positive": round(fraction_positive, 4),
+                }
+            )
+
+        return {
+            "expected_calibration_error": round(float(expected_calibration_error), 6),
+            "curve": curve,
+        }
+
+    def _evaluate_model_metrics(
+        self,
+        y_true: np.ndarray,
+        scores: np.ndarray,
+        threshold: float = DEFAULT_EVAL_THRESHOLD,
+    ) -> dict[str, Any]:
+        labels = np.asarray(y_true, dtype=int)
+        clipped_scores = np.clip(np.asarray(scores, dtype=float), 0.0, 1.0)
+        sample_size = len(labels)
+        queue_size = self._evaluation_queue_size(sample_size)
+        threshold_predictions = (clipped_scores >= threshold).astype(int)
+        positives = int(labels.sum())
+        unique_labels = np.unique(labels)
+
+        if sample_size and len(unique_labels) > 1:
+            auc = float(roc_auc_score(labels, clipped_scores))
+        else:
+            auc = 0.0
+
+        if positives == 0:
+            pr_auc = 0.0
+        elif positives == sample_size:
+            pr_auc = 1.0
+        else:
+            pr_auc = float(average_precision_score(labels, clipped_scores))
+
+        precision = float(precision_score(labels, threshold_predictions, zero_division=0)) if sample_size else 0.0
+        recall = float(recall_score(labels, threshold_predictions, zero_division=0)) if sample_size else 0.0
+        f1 = float(f1_score(labels, threshold_predictions, zero_division=0)) if sample_size else 0.0
+        brier = float(brier_score_loss(labels, clipped_scores)) if sample_size else 0.0
+        calibration = self._calibration_profile(labels, clipped_scores)
+
+        if sample_size and queue_size:
+            ranked_indices = np.argsort(clipped_scores)[::-1][:queue_size]
+            top_hits = int(labels[ranked_indices].sum())
+            precision_at_k = float(top_hits / queue_size)
+            recall_at_k = float(top_hits / positives) if positives else 0.0
+        else:
+            top_hits = 0
+            precision_at_k = 0.0
+            recall_at_k = 0.0
+
+        confusion = confusion_matrix(labels, threshold_predictions, labels=[0, 1]) if sample_size else np.zeros((2, 2), dtype=int)
+        tn, fp, fn, tp = (int(value) for value in confusion.ravel())
+
+        return {
+            "auc": round(auc, 4),
+            "pr_auc": round(pr_auc, 4),
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+            "precision_at_k": round(precision_at_k, 4),
+            "recall_at_k": round(recall_at_k, 4),
+            "evaluation_k": int(queue_size),
+            "threshold": round(float(threshold), 4),
+            "top_k_hits": int(top_hits),
+            "threshold_positive_count": int(threshold_predictions.sum()),
+            "threshold_negative_count": int(sample_size - threshold_predictions.sum()),
+            "threshold_confusion_matrix": {
+                "tn": tn,
+                "fp": fp,
+                "fn": fn,
+                "tp": tp,
+            },
+            "brier_score": round(brier, 4),
+            "calibration_error": calibration["expected_calibration_error"],
+            "calibration_curve": calibration["curve"],
+        }
 
     def generate_synthetic(self, n_customers=2000, n_days=180, callback=None, preset_name: str | None = None):
         preset_name, preset = self._resolve_synthetic_preset(preset_name)
@@ -541,16 +653,18 @@ class MassAIEngine:
         iso.fit(X_train)
         self.models["Isolation Forest"] = iso
         iso_scores_full = -iso.score_samples(X_scaled)
+        iso_scores = -iso.score_samples(X_test)
+        iso_metrics = self._evaluate_model_metrics(y_test, iso_scores)
         if supervised_ok:
-            iso_scores = -iso.score_samples(X_test)
-            iso_pred = (iso.predict(X_test) == -1).astype(int)
             self.results["Isolation Forest"] = {
-                "auc": roc_auc_score(y_test, iso_scores),
-                "f1": f1_score(y_test, iso_pred),
+                **iso_metrics,
                 "type": "Unsupervised",
             }
         else:
-            self.results["Isolation Forest"] = {"auc": 0.0, "f1": 0.0, "type": "Fallback"}
+            self.results["Isolation Forest"] = {
+                **iso_metrics,
+                "type": "Fallback",
+            }
 
         if supervised_ok:
             if callback:
@@ -569,7 +683,11 @@ class MassAIEngine:
             xgb.fit(X_train, y_train)
             self.models["XGBoost"] = xgb
             xgb_prob = xgb.predict_proba(X_test)[:, 1]
-            self.results["XGBoost"] = {"auc": roc_auc_score(y_test, xgb_prob), "f1": f1_score(y_test, xgb.predict(X_test)), "type": "Supervised"}
+            xgb_metrics = self._evaluate_model_metrics(y_test, xgb_prob)
+            self.results["XGBoost"] = {
+                **xgb_metrics,
+                "type": "Supervised",
+            }
 
             if callback:
                 callback(84, "Training Random Forest")
@@ -577,9 +695,9 @@ class MassAIEngine:
             rf.fit(X_train, y_train)
             self.models["Random Forest"] = rf
             rf_prob = rf.predict_proba(X_test)[:, 1]
+            rf_metrics = self._evaluate_model_metrics(y_test, rf_prob)
             self.results["Random Forest"] = {
-                "auc": roc_auc_score(y_test, rf_prob),
-                "f1": f1_score(y_test, rf.predict(X_test)),
+                **rf_metrics,
                 "type": "Supervised",
                 "importances": dict(zip(self.feature_cols, rf.feature_importances_)),
             }
@@ -590,7 +708,11 @@ class MassAIEngine:
             gb.fit(X_train, y_train)
             self.models["Gradient Boosting"] = gb
             gb_prob = gb.predict_proba(X_test)[:, 1]
-            self.results["Gradient Boosting"] = {"auc": roc_auc_score(y_test, gb_prob), "f1": f1_score(y_test, gb.predict(X_test)), "type": "Supervised"}
+            gb_metrics = self._evaluate_model_metrics(y_test, gb_prob)
+            self.results["Gradient Boosting"] = {
+                **gb_metrics,
+                "type": "Supervised",
+            }
 
             if callback:
                 callback(93, "Training Stacking Ensemble")
@@ -608,7 +730,11 @@ class MassAIEngine:
             stack.fit(X_train, y_train)
             self.models["Stacking Ensemble"] = stack
             stack_prob = stack.predict_proba(X_test)[:, 1]
-            self.results["Stacking Ensemble"] = {"auc": roc_auc_score(y_test, stack_prob), "f1": f1_score(y_test, stack.predict(X_test)), "type": "Meta Learning"}
+            stack_metrics = self._evaluate_model_metrics(y_test, stack_prob)
+            self.results["Stacking Ensemble"] = {
+                **stack_metrics,
+                "type": "Meta Learning",
+            }
         else:
             self.log("Supervised models were skipped because there were not enough class labels.")
 
@@ -818,6 +944,7 @@ class MassAIEngine:
 
         df = self.df_scored
         best_model = self.best_model_name()
+        best_metrics = self.results.get(best_model, {}) if self.results else {}
         return {
             "best_model": best_model,
             "customer_count": int(len(df)),
@@ -832,4 +959,22 @@ class MassAIEngine:
             "preset_name": self.last_preset_name,
             "preset_summary": self.last_preset_summary,
             "explainability_summary": self.last_explainability_summary,
+            "best_model_performance": {
+                "auc": float(best_metrics.get("auc", 0.0) or 0.0),
+                "pr_auc": float(best_metrics.get("pr_auc", 0.0) or 0.0),
+                "f1": float(best_metrics.get("f1", 0.0) or 0.0),
+                "precision": float(best_metrics.get("precision", 0.0) or 0.0),
+                "recall": float(best_metrics.get("recall", 0.0) or 0.0),
+                "precision_at_k": float(best_metrics.get("precision_at_k", 0.0) or 0.0),
+                "recall_at_k": float(best_metrics.get("recall_at_k", 0.0) or 0.0),
+                "evaluation_k": int(best_metrics.get("evaluation_k", 0) or 0),
+                "threshold": float(best_metrics.get("threshold", DEFAULT_EVAL_THRESHOLD) or DEFAULT_EVAL_THRESHOLD),
+                "top_k_hits": int(best_metrics.get("top_k_hits", 0) or 0),
+                "threshold_positive_count": int(best_metrics.get("threshold_positive_count", 0) or 0),
+                "threshold_negative_count": int(best_metrics.get("threshold_negative_count", 0) or 0),
+                "brier_score": float(best_metrics.get("brier_score", 0.0) or 0.0),
+                "calibration_error": float(best_metrics.get("calibration_error", 0.0) or 0.0),
+                "threshold_confusion_matrix": best_metrics.get("threshold_confusion_matrix", {"tn": 0, "fp": 0, "fn": 0, "tp": 0}),
+                "calibration_curve": best_metrics.get("calibration_curve", []),
+            },
         }

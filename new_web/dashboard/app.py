@@ -273,6 +273,16 @@ TRANSLATIONS = {
                     "advantage": "Zaman serisi modelleme",
                 },
             ],
+            "operational_metrics_title": "Operasyonel Metrikler",
+            "operational_metrics_caption": "AUC tek başına yeterli değil; top-K ve kalibrasyon da gösterilir.",
+            "threshold_summary_label": "Eşik özeti",
+            "queue_size_label": "İnceleme kuyruğu",
+            "roc_auc_label": "ROC-AUC",
+            "pr_auc_label": "PR-AUC",
+            "precision_at_k_label": "Precision@K",
+            "recall_at_k_label": "Recall@K",
+            "brier_label": "Brier",
+            "calibration_label": "Kalibrasyon Hatası",
         },
         "customer": {
             "title": "Müşteri Detay İnceleme",
@@ -568,6 +578,16 @@ TRANSLATIONS = {
                     "advantage": "Time-series modeling",
                 },
             ],
+            "operational_metrics_title": "Operational Metrics",
+            "operational_metrics_caption": "AUC alone is not enough; top-K and calibration help with inspection prioritization.",
+            "threshold_summary_label": "Threshold summary",
+            "queue_size_label": "Review queue",
+            "roc_auc_label": "ROC-AUC",
+            "pr_auc_label": "PR-AUC",
+            "precision_at_k_label": "Precision@K",
+            "recall_at_k_label": "Recall@K",
+            "brier_label": "Brier",
+            "calibration_label": "Calibration Error",
         },
         "customer": {
             "title": "Customer Detail Review",
@@ -1323,20 +1343,26 @@ def render_model_performance(df, metrics):
         st.success(f"🚀 Using advanced engine — Best model: **{metrics.get('best_model', 'Stacking Ensemble')}**")
 
         overview = metrics.get("overview", {})
+        performance = overview.get("best_model_performance", {})
         if overview:
             c1, c2, c3 = st.columns(3)
             c1.metric("High Risk Customers", overview.get("high_risk_count", "-"))
             c2.metric("Critical Cases", overview.get("critical_count", "-"))
             c3.metric("Est. Monthly Exposure", f"{overview.get('total_loss', 0):,.0f} ₺")
-
-        # Prefer the new adapter helper for performance data when available
-        try:
-            from shared.core.dashboard_adapters import get_engine_scored_for_performance
-            perf_data = get_engine_scored_for_performance({"overview": metrics.get("overview", {}), "best_model": metrics.get("best_model")})
-            if perf_data.get("summary"):
-                st.caption("Performance summary powered by shared/core adapters")
-        except Exception:
-            pass
+            if performance:
+                st.markdown(f"**{local_t['performance']['operational_metrics_title']}**")
+                p1, p2, p3, p4, p5 = st.columns(5)
+                p1.metric(local_t["performance"]["roc_auc_label"], f"{performance.get('auc', 0):.4f}")
+                p2.metric(local_t["performance"]["pr_auc_label"], f"{performance.get('pr_auc', 0):.4f}")
+                p3.metric(local_t["performance"]["precision_at_k_label"], f"{performance.get('precision_at_k', 0):.4f}")
+                p4.metric(local_t["performance"]["recall_at_k_label"], f"{performance.get('recall_at_k', 0):.4f}")
+                p5.metric(local_t["performance"]["calibration_label"], f"{performance.get('calibration_error', 0):.4f}")
+                st.caption(local_t["performance"]["operational_metrics_caption"])
+                st.caption(
+                    f"{local_t['performance']['threshold_summary_label']}: {performance.get('threshold', 0.5):.2f} | "
+                    f"{local_t['performance']['queue_size_label']}: {performance.get('evaluation_k', 0)} | "
+                    f"{local_t['performance']['brier_label']}: {performance.get('brier_score', 0):.4f}"
+                )
 
         engine_res = metrics.get("engine_results", {})
         if engine_res:
@@ -1346,11 +1372,17 @@ def render_model_performance(df, metrics):
                 auc = res.get("auc", 0)
                 f1 = res.get("f1", 0)
                 cols[i].metric(model_name, f"AUC {auc:.3f}", f"F1 {f1:.3f}")
+                cols[i].caption(
+                    f"{local_t['performance']['pr_auc_label']} {res.get('pr_auc', 0):.3f} | "
+                    f"{local_t['performance']['precision_at_k_label']} {res.get('precision_at_k', 0):.3f} | "
+                    f"{local_t['performance']['recall_at_k_label']} {res.get('recall_at_k', 0):.3f} | "
+                    f"{local_t['performance']['calibration_label']} {res.get('calibration_error', 0):.3f}"
+                )
 
         if "best_model" in metrics:
             st.caption(f"Primary model powering this view: **{metrics['best_model']}**")
 
-        st.info("Detailed ROC/PR curves for the full 6-model ensemble coming in follow-up work.")
+        st.info("Detailed ROC/PR curves and calibration plots for the full 6-model ensemble coming in follow-up work.")
         st.markdown("---")
 
         # Real data validation — prominent in performance view

@@ -23,7 +23,7 @@ This checklist tracks the gap between the current prototype and a field-ready de
 ## Model Operations
 
 - [x] Multiple model families are available in the engine.
-- [ ] Add PR-AUC, precision@K, recall@K, calibration, and threshold reports.
+- [x] Add PR-AUC, precision@K, recall@K, calibration, and threshold reports.
 - [ ] Add drift checks for score distribution and feature distribution.
 - [ ] Add retraining policy and approval flow.
 - [ ] Store trained model artifacts outside Git with version metadata.

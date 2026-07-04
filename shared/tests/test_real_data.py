@@ -97,7 +97,11 @@ class TestRealDataBenchmark(unittest.TestCase):
         )
 
         self.assertIn("synthetic_in_dist_auc", result)
+        self.assertIn("synthetic_in_dist_pr_auc", result)
+        self.assertIn("synthetic_in_dist_precision_at_k", result)
+        self.assertIn("synthetic_in_dist_calibration_error", result)
         self.assertIn("sgcc_proxy_in_dist_auc", result)
+        self.assertIn("sgcc_proxy_in_dist_pr_auc", result)
         self.assertIn("auc_gap", result)
         self.assertIn("best_model_synthetic", result)
         self.assertGreaterEqual(result["synthetic_in_dist_auc"], 0.5)
@@ -106,10 +110,32 @@ class TestRealDataBenchmark(unittest.TestCase):
     def test_validation_report_generator_produces_readable_markdown(self):
         fake_result = {
             "synthetic_in_dist_auc": 0.99,
+            "synthetic_in_dist_pr_auc": 0.93,
+            "synthetic_in_dist_precision": 0.91,
+            "synthetic_in_dist_recall": 0.88,
             "sgcc_proxy_in_dist_auc": 0.91,
+            "sgcc_proxy_in_dist_pr_auc": 0.84,
+            "sgcc_proxy_in_dist_precision": 0.79,
+            "sgcc_proxy_in_dist_recall": 0.76,
             "auc_gap": 0.08,
+            "pr_auc_gap": 0.09,
             "synthetic_in_dist_f1": 0.95,
             "sgcc_proxy_in_dist_f1": 0.78,
+            "synthetic_in_dist_precision_at_k": 0.81,
+            "synthetic_in_dist_recall_at_k": 0.74,
+            "sgcc_proxy_in_dist_precision_at_k": 0.65,
+            "sgcc_proxy_in_dist_recall_at_k": 0.58,
+            "precision_at_k_gap": 0.16,
+            "recall_at_k_gap": 0.16,
+            "synthetic_in_dist_brier_score": 0.07,
+            "sgcc_proxy_in_dist_brier_score": 0.11,
+            "synthetic_in_dist_calibration_error": 0.04,
+            "sgcc_proxy_in_dist_calibration_error": 0.08,
+            "calibration_error_gap": -0.04,
+            "synthetic_in_dist_evaluation_k": 20,
+            "sgcc_proxy_in_dist_evaluation_k": 20,
+            "synthetic_in_dist_threshold": 0.5,
+            "sgcc_proxy_in_dist_threshold": 0.5,
             "best_model_synthetic": "XGBoost",
             "best_model_on_proxy": "Random Forest",
             "n_synthetic": 300,
@@ -127,6 +153,9 @@ class TestRealDataBenchmark(unittest.TestCase):
         self.assertIn("Gerçek Veri Validasyon Raporu", content)
         self.assertIn("0.99", content)
         self.assertIn("0.91", content)
+        self.assertIn("PR-AUC", content)
+        self.assertIn("Precision@K", content)
+        self.assertIn("Kalibrasyon Hatası", content)
 
 
 class TestRealDataEdgeCases(unittest.TestCase):

@@ -74,13 +74,21 @@ class TestDashboardAdapters(unittest.TestCase):
             "best_model": "Stacking Ensemble",
             "overview": {
                 "high_risk_count": 12,
-                "customer_count": 100
+                "customer_count": 100,
+                "best_model_performance": {
+                    "auc": 0.91,
+                    "pr_auc": 0.84,
+                    "precision_at_k": 0.61,
+                    "recall_at_k": 0.55,
+                },
             }
         }
         from dashboard_adapters import extract_metrics_from_engine
         metrics = extract_metrics_from_engine(fake_result)
         self.assertTrue(metrics.get("engine_mode"))
         self.assertEqual(metrics["best_model"], "Stacking Ensemble")
+        self.assertIn("best_model_performance", metrics)
+        self.assertEqual(metrics["best_model_performance"]["pr_auc"], 0.84)
 
     def test_get_scored_data_and_metrics_combines_helpers(self):
         from dashboard_adapters import get_scored_data_and_metrics
@@ -91,12 +99,16 @@ class TestDashboardAdapters(unittest.TestCase):
                 "risk_category": ["high"]
             }),
             "best_model": "Random Forest",
-            "overview": {"customer_count": 50}
+            "overview": {
+                "customer_count": 50,
+                "best_model_performance": {"auc": 0.9, "pr_auc": 0.85},
+            }
         }
         scored, metrics = get_scored_data_and_metrics(fake_result)
         self.assertFalse(scored.empty)
         self.assertIn("risk_level", scored.columns)
         self.assertTrue(metrics.get("engine_mode"))
+        self.assertIn("best_model_performance", metrics)
 
     def test_run_engine_based_scoring_produces_expected_columns(self):
         from dashboard_adapters import run_engine_based_scoring

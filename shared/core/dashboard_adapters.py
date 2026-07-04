@@ -88,6 +88,7 @@ def get_engine_performance_summary(engine_result: dict) -> dict:
 
     overview = engine_result.get("overview", {})
     best_model = engine_result.get("best_model", "Unknown")
+    performance = overview.get("best_model_performance", {})
 
     return {
         "best_model": best_model,
@@ -96,6 +97,7 @@ def get_engine_performance_summary(engine_result: dict) -> dict:
         "total_customers": overview.get("customer_count", 0),
         "estimated_monthly_loss": overview.get("total_loss", 0),
         "average_risk": overview.get("average_probability", 0),
+        "best_model_performance": performance,
     }
 
 
@@ -151,6 +153,7 @@ def get_engine_scored_for_performance(engine_result: dict) -> dict:
         "summary": summary,
         "scored_sample": scored.head(100) if not scored.empty else pd.DataFrame(),
         "engine_results": engine_result.get("engine_results", {}),
+        "best_model_performance": summary.get("best_model_performance", {}),
     }
 
 
@@ -227,9 +230,12 @@ def extract_metrics_from_engine(engine_result: dict) -> dict:
         "engine_mode": True,
         "best_model": best_model,
         "overview": overview,
+        "best_model_performance": overview.get("best_model_performance", {}),
     }
 
     # If the engine has detailed per-model results, expose them
+    if "engine_results" in engine_result:
+        metrics["engine_results"] = engine_result.get("engine_results", {})
     engine_obj = engine_result.get("engine")
     if engine_obj and hasattr(engine_obj, "results"):
         metrics["engine_results"] = engine_obj.results
