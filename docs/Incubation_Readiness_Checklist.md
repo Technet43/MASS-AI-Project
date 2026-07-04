@@ -6,7 +6,7 @@
 - [x] Dashboard kodu ciddi ölçüde temizlendi (eski ~2570 satır → 2140 satır)
 - [x] Legacy/deprecated fonksiyonlar büyük ölçüde kaldırıldı (run_models, eski upload/simulation helper'ları vb.)
 - [x] Tüm ana akışlar engine + dashboard_adapters üzerinden çalışıyor
-- [x] 39 test stabil ve yeşil
+- [x] 42 test stabil ve yeşil
 - [x] Dockerfile + Docker Compose ile tekrar üretilebilir lokal deployment eklendi
 - [x] Dev/test bağımlılıkları `requirements-dev.txt` altında ayrıldı
 - [ ] Daha fazla test (özellikle entegrasyon ve edge case'ler) eklenebilir (devam edilebilir)

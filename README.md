@@ -154,7 +154,7 @@ Operational readiness documents:
 
 - Code quality significantly improved
 - Real data gap measured and documented
-- 39 tests passing
+- 42 tests passing
 - Strong documentation for incubation
 - Docker-based local deployment added
 
@@ -162,7 +162,7 @@ Operational readiness documents:
 
 - Public real SGCC or Turkish DSO pilot benchmark is still needed.
 - `new_web/dashboard/app.py` remains large and should be split further.
-- Model reporting should add PR-AUC, precision@K, recall@K, calibration, and threshold analysis.
+- Authentication, structured logging, and staging hardening are still pending.
 - Pilot traction is not proven until at least one partner reviews real or anonymized operational data.
 
 The project is in a much cleaner and more honest state than earlier in 2026.
@@ -175,4 +175,4 @@ MIT
 
 ---
 
-*Last updated: May 2026*
+*Last updated: July 2026*
