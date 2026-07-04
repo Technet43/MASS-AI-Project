@@ -9,7 +9,10 @@ from typing import Any
 
 import pandas as pd
 
-from ops_store import is_overdue_value, parse_datetime, priority_for_risk_band
+try:
+    from .ops_store import is_overdue_value, parse_datetime, priority_for_risk_band
+except ImportError:
+    from ops_store import is_overdue_value, parse_datetime, priority_for_risk_band
 
 # Supported: TRY, USD, EUR, GBP, JPY, SAR, AED, ...
 # Override at runtime: set MASS_AI_CURRENCY=USD before launching.

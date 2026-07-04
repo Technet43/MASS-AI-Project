@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo Running compile checks before packaging...
-python -m py_compile ..\shared\core\app_metadata.py ..\shared\core\support_bundle.py ..\shared\core\mass_ai_domain.py ..\shared\core\mass_ai_engine.py ..\shared\core\ops_store.py mass_ai_desktop.py ui_kit.py ..\MASS_AI_LAUNCHER.py
+python -m py_compile ..\shared\core\app_metadata.py ..\shared\core\support_bundle.py ..\shared\core\mass_ai_domain.py ..\shared\core\mass_ai_engine.py ..\shared\core\ops_store.py mass_ai_desktop.py ui_kit.py ..\apps\launcher\MASS_AI_LAUNCHER.py
 if errorlevel 1 goto :fail
 echo.
 echo Running unit tests before packaging...

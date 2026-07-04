@@ -14,15 +14,26 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
-from mass_ai_domain import (
-    COLUMN_ALIASES,
-    CRITICAL_RISK_LABELS,
-    RISK_LABELS,
-    fmt_currency,
-    fmt_percent,
-    normalize_column_key,
-    safe_text,
-)
+try:
+    from .mass_ai_domain import (
+        COLUMN_ALIASES,
+        CRITICAL_RISK_LABELS,
+        RISK_LABELS,
+        fmt_currency,
+        fmt_percent,
+        normalize_column_key,
+        safe_text,
+    )
+except ImportError:
+    from mass_ai_domain import (
+        COLUMN_ALIASES,
+        CRITICAL_RISK_LABELS,
+        RISK_LABELS,
+        fmt_currency,
+        fmt_percent,
+        normalize_column_key,
+        safe_text,
+    )
 
 DEFAULT_SYNTHETIC_PRESET = "Turkey Urban"
 THEFT_PATTERNS = [

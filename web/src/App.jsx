@@ -396,8 +396,8 @@ function App() {
             <p className="eyebrow">Vercel</p>
             <h2>Ready for import and deploy.</h2>
             <p>
-              The root project now contains a Vite React app, a Vercel configuration, and static
-              assets in the public directory. Vercel can publish it with the default Node build flow.
+              The web directory contains the Vite React app, Vercel configuration, and static
+              assets. Vercel can publish it with the default Node build flow.
             </p>
           </div>
 

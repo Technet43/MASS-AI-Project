@@ -8,7 +8,10 @@ from typing import Any
 
 import pandas as pd
 
-from app_metadata import metadata_dict
+try:
+    from .app_metadata import metadata_dict
+except ImportError:
+    from app_metadata import metadata_dict
 
 
 def _safe_json(data: Any) -> str:
