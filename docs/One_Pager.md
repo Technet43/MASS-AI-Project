@@ -2,7 +2,7 @@
 
 **Project:** MASS-AI — AI-Powered Electricity Theft Detection  
 **Tagline:** Measuring and closing the real data gap for Turkey's 50M smart meters  
-**Contact:** [Ad Soyad] | [e-posta] | [telefon]
+**Contact:** Available on request
 
 ---
 
@@ -38,7 +38,7 @@ We have built a complete production-ready integration layer (`real_data.py`) + a
 **Business Model:** Hybrid SaaS + success-based fee on verified theft reduction.
 
 ## Team & Ask
-[Team description to be added]
+Founder-led; team bios finalized for submission.
 
 **We are applying to İTÜ Çekirdek and Yıldız Teknik incubation programs.**  
 We have built strong technical foundations, quantified the real data risk, and prepared professional materials. We are looking for mentorship in energy sector go-to-market and first pilot connections.

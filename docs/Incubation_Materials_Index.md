@@ -1,7 +1,9 @@
 # MASS-AI — İnkübatör Malzemeleri Dizini (İndex)
 
 **Son Güncelleme:** 27 Mayıs 2026  
-**Amaç:** İTÜ Çekirdek ve Yıldız Teknik başvuruları için üretilen tüm stratejik belgelerin tek yerden takip edilebilmesi.
+**Amaç:** İTÜ Çekirdek ve Yıldız Teknik başvuruları için üretilen belgelerin tek yerden takip edilebilmesi.
+
+> Not: Bu dizin hem dış paylaşıma uygun malzemeleri hem de ekip içi çalışma notlarını içerir. Dışa gönderilecek paket için yalnızca public olarak işaretlenen dokümanlar kullanılmalıdır.
 
 ---
 
@@ -61,18 +63,30 @@ python scripts/benchmark_real_vs_synthetic.py --real /path/to/sgcc.csv
 
 ---
 
-## 5. Teknik Durum ve Dokümantasyon
+## 5. Public-Facing Technical Docs
 
 | Belge | Dosya | Not |
 |-------|-------|-----|
 | Feature Catalog (Global Standartlar + Real Data) | `docs/Feature_Catalog.md` | ~40 özellik + SGCC karşılaştırması + ilk gerçek veri testi sonuçları |
 | Architecture | `ARCHITECTURE.md` | Real Data Integration Layer bölümü eklendi |
-| Project Status & Gaps | `docs/Project_Status_and_Gaps.md` | Güncel gap'ler + gerçek veri ilerlemesi |
-| While Eating Progress Log | `docs/WHILE_EATING_PROGRESS.md` | 27 Mayıs uzun çalışma oturumunun detaylı kaydı |
+| Real Data Requirements | `docs/REAL_DATA_REQUIREMENTS.md` | Sentetik, proxy ve gerçek veri seviyelerini ayıran teknik tanım |
+| Real Data Validation Summary | `docs/Real_Data_Validation_Summary.md` | Kısa, paylaşılabilir validasyon özeti |
 
 ---
 
-## 6. Önerilen Kullanım Sırası (Başvuru Hazırlığı)
+## 6. Internal Working Notes
+
+| Belge | Dosya | Not |
+|-------|-------|-----|
+| Project Status & Gaps | `docs/Project_Status_and_Gaps.md` | İç değerlendirme ve açık risk listesi |
+| Incubation Readiness Checklist | `docs/Incubation_Readiness_Checklist.md` | Başvuru öncesi takip listesi |
+| While Eating Progress Log | `docs/WHILE_EATING_PROGRESS.md` | 27 Mayıs uzun çalışma oturumunun detaylı kaydı |
+| May 2026 Deep Work Session Report | `docs/May_2026_Deep_Work_Session_Report.md` | Derin çalışma özeti ve ara notlar |
+| PROJE_ICIN_YAPILACAKLAR_RAPORU | `docs/PROJE_ICIN_YAPILACAKLAR_RAPORU.md` | Çalışma / yapılacaklar raporu |
+
+---
+
+## 7. Önerilen Kullanım Sırası (Başvuru Hazırlığı)
 
 1. `Pitch_Deck_Full_Content.md` → Slaytları hazırla (en acil).
 2. `Business_Model_and_Revenue_v1.md` → İş modeli slaydını güçlendir.

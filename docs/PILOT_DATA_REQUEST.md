@@ -21,7 +21,7 @@ Minimum useful sample:
 The partner should remove or hash:
 
 - Customer name.
-- Phone number.
+- Direct contact details.
 - National ID or tax ID.
 - Full address.
 - Contract number if it can identify a person directly.

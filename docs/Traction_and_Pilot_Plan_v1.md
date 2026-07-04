@@ -3,6 +3,8 @@
 **Tarih:** 27 Mayıs 2026  
 **Amaç:** "Müşteri doğrulaması nerede?" sorusuna somut, yapılabilir bir cevap vermek.
 
+> Not: Bu belge bir çalışma taslağıdır. Şirket isimleri ve outreach dili, başvuru öncesi son hale göre güncellenmelidir.
+
 ---
 
 ## 1. Mevcut Durum (Dürüst Değerlendirme)
@@ -65,9 +67,9 @@ Size 15 dakikalık kısa bir demo + mevcut verilerinizle ne yapabileceğimizi g�
 Uygun bir zaman var mı?
 
 İyi çalışmalar,
-[Ad Soyad]
+Founder
 MASS-AI Kurucusu
-[Telefon] | [Mail]
+Contact details shared during outreach
 ```
 
 ### B. İkinci Temas (Arama + Takip)

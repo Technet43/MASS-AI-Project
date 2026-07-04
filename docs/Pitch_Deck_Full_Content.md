@@ -14,14 +14,14 @@ Türkiye'nin Elektrik Kaçaklarını Yapay Zekâ ile Tespit Ediyoruz
 **Alt başlık:**  
 Akıllı Sayaç Verilerinden Gerçek Zamanlı Kaçak Tespiti ve Operasyonel Önceliklendirme
 
-**Sunucu:** [Ad Soyad]  
-**İletişim:** [mail / telefon]  
+**Sunucu:** Founder  
+**İletişim:** Available on request  
 **Tarih:** Mayıs 2026
 
 **Görsel önerisi:** Güçlü bir görsel — gece elektrik direkleri + veri akışı + kırmızı risk haritası.
 
 **Konuşma notu (30-40 sn):**  
-"Merhaba, ben [ad]. MASS-AI ile Türkiye'deki en büyük teknik kayıplardan birini, elektrik kaçaklarını, yapay zekâ ile çözmeye çalışıyoruz. Bugün size hem teknik olarak iddialı hem de piyasaya çok yakın bir çözüm sunacağız."
+"Merhaba, ben MASS-AI'nin kurucusuyum. MASS-AI ile Türkiye'deki en büyük teknik kayıplardan birini, elektrik kaçaklarını, yapay zekâ ile çözmeye çalışıyoruz. Bugün size hem teknik olarak iddialı hem de piyasaya çok yakın bir çözüm sunacağız."
 
 ---
 
@@ -170,7 +170,7 @@ Cevap: Birçok şirket halihazırda yabancı yazılımlara (bazıları çok paha
 (Bu slayt şu anda en zayıf nokta. Kullanıcı burayı doldurmalı.)
 
 **Örnek yapı:**
-- [Ad Soyad] — Kurucu / AI & Ürün
+- Founder — AI & Product
 - [Varsa ortak] — ...
 - Danışman / Mentor (varsa): Enerji sektörü deneyimli isimler
 
