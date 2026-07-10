@@ -11,7 +11,7 @@ Everything else (dashboards, desktop apps, future APIs) are thin consumers of th
 MASS-AI-Project/
 ├── shared/
 │   ├── core/                    # ← ONLY PLACE WITH REAL ML + BUSINESS LOGIC
-│   │   ├── mass_ai_engine.py    # MassAIEngine (6 models, stacking, explainability, synthetic generator)
+│   │   ├── mass_ai_engine.py    # MassAIEngine (4 base models plus a stacking ensemble, 5 model outputs in total; explainability, synthetic generator)
 │   │   ├── dashboard_adapters.py # Helpers for UIs
 │   │   ├── ops_store.py
 │   │   └── ...
@@ -28,9 +28,13 @@ MASS-AI-Project/
 ├── legacy/                      # Archived old code (do not use)
 │
 ├── docs/
-│   └── ADR/                     # Architecture Decision Records
+│   ├── product/                 # Product and validation documentation
+│   ├── incubation/              # Incubation-facing source material
+│   ├── planning/                # Project planning
+│   ├── research/                # Research drafts
+│   └── archive/                 # Historical notes
 │
-├── MASS_AI_LAUNCHER.py          # Primary way to launch apps
+├── apps/launcher/MASS_AI_LAUNCHER.py
 └── README.md
 ```
 
@@ -53,29 +57,29 @@ MASS-AI-Project/
 pip install -r shared/requirements.txt
 
 # Best experience
-python MASS_AI_LAUNCHER.py
+python apps/launcher/MASS_AI_LAUNCHER.py
 
 # Or directly
 streamlit run new_web/dashboard/app.py
 ```
 
-## Data Model & Global Standards Alignment
+## Data Model and Validation Scope
 
-The project deliberately uses a richer feature set than most academic baselines (SGCC, CER Ireland, London Smart Meter).
+The current feature schema combines consumption statistics, temporal patterns, peer/network context, and operational fields. Input availability varies by dataset; daily-column public inputs often do not contain the full operational or network context.
 
-See the full comparison and feature list in [docs/Feature_Catalog.md](docs/Feature_Catalog.md).
+See the feature definitions and claim boundaries in [docs/product/FEATURE_CATALOG.md](docs/product/FEATURE_CATALOG.md).
 
 **Key points**:
-- ~40 features vs typical 10–20 in literature
-- Strong peer/network context (transformer & feeder level) — rarely present in public papers
-- Domain-specific signals tailored to Turkish utility operations (seasonal flags, tamper events, outages)
-- This richness is both a technical strength and an important credibility point for incubation applications.
+- The prototype contains roughly 40 engineered features.
+- Peer and network context is used only when source data provides meaningful hierarchy information.
+- Domain-oriented fields require observed source data; compatibility values must not be treated as observations.
+- Relative comparisons with published work require a cited, like-for-like evaluation.
 
 ## Status (as of latest work)
-- Engine is the clear heart
-- Dashboard migration in progress
-- Testing and structure being professionalized to reach 9+ rating in all categories
-- Feature catalog and global standards narrative documented for both technical reviewers and incubation juries
+- shared/core is the primary engine layer.
+- Dashboard migration and modularization remain in progress.
+- Automated tests and local container tooling are present.
+- The prototype still needs real-data validation, partner governance, and operational testing.
 
 ---
 
@@ -83,18 +87,17 @@ See the full comparison and feature list in [docs/Feature_Catalog.md](docs/Featu
 
 **Location**: `shared/core/real_data.py`
 
-This module was created to directly address the #1 incubation risk: "only synthetic data validation".
+This module provides an integration layer for compatible daily-column inputs and a controlled project-generated SGCC-style proxy. The proxy is generated data and is not a public SGCC benchmark or field validation.
 
 Key components:
-- `generate_realistic_sgcc_proxy()` — Produces statistically realistic SGCC-style data for controlled domain-shift testing.
+- `generate_realistic_sgcc_proxy()` — Generates a project-generated SGCC-style proxy for controlled domain-shift testing.
 - `extract_sgcc_style_features()` — Robust mapper that converts classic SGCC daily-column format into the engine's ~40 feature schema.
 - `run_real_data_benchmark()` — Runs synthetic vs proxy comparison and returns clear gap metrics.
 - `generate_real_data_validation_report()` — Produces investor/incubator-ready markdown reports.
 
-**Current Status (27 May 2026)**:
-- First controlled benchmark completed: Synthetic AUC ~0.99 → SGCC-proxy AUC ~0.91 (gap ~0.08-0.09).
-- Automated report generation working.
-- 5+ unit tests added (`shared/tests/test_real_data.py`).
+**Current status (May 2026)**:
+- A controlled synthetic-versus-proxy run recorded an AUC difference of roughly 0.08–0.09.
+- Automated report generation and dedicated adapter tests are present.
+- A documented public-data evaluation and partner pilot are still required.
 
-This layer is the foundation for future real utility data integration (Turkish DSOs or public SGCC files).
-
+This integration layer can support future real-data work, but its proxy result must not be presented as operational or field evidence.

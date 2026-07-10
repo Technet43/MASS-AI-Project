@@ -1,5 +1,7 @@
 # MASS-AI Sprint 2 Architecture Notes
 
+> **Archive.** Historical Sprint 2 notes retained for context. Paths, implementation details, and next steps may not reflect the current prototype.
+
 ## Scope
 - Synthetic dataset presets for demo realism
 - Row-level explainability for scored customers

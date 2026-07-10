@@ -5,7 +5,7 @@ MASS-AI should be evaluated as an inspection-prioritization system, not only as 
 ## Current Known Limits
 
 - Synthetic AUC near 1.0 is not enough evidence for field performance.
-- SGCC-style proxy data measures domain shift but is still generated data.
+- Project-generated SGCC-style proxy data measures domain shift but is still generated data.
 - Some features in real-data adapters are proxy-filled when the source data lacks operational fields.
 - The current default tests focus on core behavior, not full dashboard or large-file integration.
 
