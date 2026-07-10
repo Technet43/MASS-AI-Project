@@ -1,6 +1,6 @@
 # MASS-AI Startup Readiness
 
-**Audience:** Internal planning
+**Audience:** Project planning
 
 **Purpose:** A single, evidence-based view of product, validation, incubation, and pilot readiness.
 
@@ -15,7 +15,7 @@ The repository does not provide evidence of a public real-data benchmark, Turkis
 | Workstream | Evidence currently present | Main gap before a stronger claim |
 | --- | --- | --- |
 | Product | Shared core engine, dashboard, case-review workflow, synthetic presets, and local container tooling | Partner workflow testing, authentication, logging, upload hardening, and deployment ownership |
-| Validation | Synthetic evaluation and a controlled SGCC-style realistic proxy; input adapter for compatible daily-column data | Reproducible real-data benchmark, leakage controls, field availability analysis, and operator review |
+| Validation | Synthetic evaluation and a controlled project-generated SGCC-style proxy; input adapter for compatible daily-column data | Reproducible real-data benchmark, leakage controls, field availability analysis, and operator review |
 | Data governance | Privacy-safe data request and validation requirements are documented | Partner-approved access, retention, deletion, security, and audit controls |
 | Go-to-market | Discovery and pilot plan exists | Verified conversations, customer feedback, agreement, and permitted pilot data |
 | Commercial model | Hybrid commercial structure is documented as a pricing hypothesis | Willingness-to-pay evidence, procurement constraints, and verified economics |
@@ -42,7 +42,7 @@ The repository does not provide evidence of a public real-data benchmark, Turkis
 
 ### What the current results mean
 
-The committed comparison between synthetic data and an SGCC-style realistic proxy measures a controlled domain shift. The proxy is generated data and is not a real SGCC dataset or field validation. The reported proxy result must not be used as proof of utility performance, savings, or fraud-detection effectiveness.
+The committed comparison between synthetic data and a project-generated SGCC-style proxy measures a controlled domain shift. The proxy is generated data and is not a real SGCC dataset or field validation. The reported proxy result must not be used as proof of utility performance, savings, or fraud-detection effectiveness.
 
 ### Required next evidence
 

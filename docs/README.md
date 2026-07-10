@@ -1,6 +1,6 @@
 # MASS-AI Documentation
 
-This directory separates current product material, incubator-facing material, internal planning, research drafts, and historical documents.
+This directory separates current product material, incubator-facing material, project planning, research drafts, and historical documents.
 
 ## Product
 
@@ -18,9 +18,9 @@ This directory separates current product material, incubator-facing material, in
 - [Business model](incubation/BUSINESS_MODEL.md) — Commercial design and explicit pricing-hypothesis boundary.
 - [Go-to-market and pilot plan](incubation/GO_TO_MARKET_AND_PILOT.md) — Discovery, pilot phases, and traction boundaries.
 
-## Internal
+## Project planning
 
-- [Startup readiness](internal/STARTUP_READINESS.md) — Consolidated view of current evidence, readiness gaps, and priority actions.
+- [Startup readiness](planning/STARTUP_READINESS.md) — Consolidated view of current evidence, readiness gaps, and priority actions.
 
 ## Research
 
@@ -33,7 +33,7 @@ This directory separates current product material, incubator-facing material, in
 
 ## Documentation rules
 
-- The default SGCC-style realistic proxy is generated data, not a real SGCC benchmark or field validation.
+- The default project-generated SGCC-style proxy is generated data, not a real SGCC benchmark or field validation.
 - Use “pilot-ready prototype” or “integration layer” for the current product state; do not imply production readiness.
 - Mark unvalidated prices, revenue, savings, market size, and traction as hypotheses or remove them.
 - Add sources and dates before presenting external market or sector figures.

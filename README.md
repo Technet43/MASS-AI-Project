@@ -27,23 +27,23 @@
 
 ---
 
-## Real Data Validation (2026)
+## Synthetic-to-Proxy Validation (2026)
 
 In May 2026, the project added an integration layer for compatible daily-column inputs and a controlled proxy evaluation.
 
 The repository can map a compatible SGCC-style CSV into the current feature schema, but it does not include a downloaded public SGCC dataset or a completed real-SGCC benchmark.
 
-**Important validation note:** the default committed benchmark uses an SGCC-style realistic proxy, not a downloaded public SGCC file. This is useful for measuring domain-shift risk, but it is not a final real-world claim. A real SGCC CSV or Turkish DSO pilot dataset is still required before production or field-performance claims.
+**Important validation note:** the default committed benchmark uses a project-generated SGCC-style proxy, not a downloaded public SGCC file. This is useful for measuring domain-shift risk, but it is not a final real-world claim. A real SGCC CSV or Turkish DSO pilot dataset is still required before production or field-performance claims.
 
 **Benchmark Results (May 2026):**
 
 | Dataset                    | AUC    | F1     |
 |---------------------------|--------|--------|
 | Synthetic (Turkey Urban)  | 0.999  | 0.97   |
-| SGCC-style Realistic Proxy| 0.912  | 0.80   |
+| Project-generated SGCC-style Proxy | 0.912  | 0.80   |
 | **Measured Gap**          | **~0.087** | —   |
 
-This gap is now measured and documented. Full tooling and automated reports are available.
+The synthetic-to-proxy gap is now measured and documented. Full tooling and automated reports are available.
 
 See [the validation summary](docs/product/REAL_DATA_VALIDATION_SUMMARY.md) and run:
 ```bash
@@ -74,10 +74,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 | | Feature | Description |
 |---|---|---|
-| 🤖 | **5 Models + Stacking** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting + Stacking Ensemble |
+| 🤖 | **4 Base Models + Stacking Ensemble** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting + Stacking Ensemble |
 | 🔍 | **8 Theft Patterns** | Realistic Turkish consumption behaviors |
 | 🧮 | **~40 Features** | Statistical, temporal, peer and domain features |
-| 📊 | **Data Adapter & Proxy Check** | SGCC-style input adapter and a generated proxy gap (~0.09 AUC) |
+| 📊 | **Data Adapter & Proxy Check** | SGCC-style input adapter and a project-generated proxy gap (~0.09 AUC) |
 | 🗂️ | **Ops Center** | Basic case management |
 | 🌐 | **Web Dashboard** | Streamlit UI (heavily cleaned in 2026) |
 
@@ -147,7 +147,7 @@ Operational readiness documents:
 ## Current Status
 
 - Code quality significantly improved
-- Real data gap measured and documented
+- Synthetic-to-proxy gap measured and documented
 - 42 tests passing
 - Strong documentation for incubation
 - Docker-based local deployment added

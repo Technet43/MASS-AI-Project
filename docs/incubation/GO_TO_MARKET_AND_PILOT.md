@@ -28,7 +28,7 @@ Subject: Exploration of smart-meter inspection prioritization
 
 Hello [name],
 
-MASS-AI is a pilot-ready prototype for explainable smart-meter anomaly analysis and inspection prioritization. The current repository includes synthetic testing and a controlled SGCC-style realistic proxy evaluation; it does not claim field validation.
+MASS-AI is a pilot-ready prototype for explainable smart-meter anomaly analysis and inspection prioritization. The current repository includes synthetic testing and a controlled project-generated SGCC-style proxy evaluation; it does not claim field validation.
 
 We would value a short discovery conversation about your inspection workflow, available anonymized data, governance requirements, and whether a limited evaluation could be appropriate. We can share the prototype, validation boundaries, and a privacy-safe data request.
 

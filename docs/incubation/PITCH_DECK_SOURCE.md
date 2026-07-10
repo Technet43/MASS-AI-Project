@@ -49,12 +49,12 @@ Describe the product as a pilot-ready prototype. Do not describe it as productio
 
 ## Slide 6 — Validation status
 
-The default committed evaluation is a controlled comparison between synthetic data and an SGCC-style realistic proxy:
+The default committed evaluation is a controlled comparison between synthetic data and a project-generated SGCC-style proxy:
 
 | Evaluation input | AUC | F1 |
 | --- | ---: | ---: |
 | Synthetic Turkey Urban, 900 customers | 0.9994 | 0.9697 |
-| SGCC-style realistic proxy, 700 customers | 0.9119 | 0.8000 |
+| Project-generated SGCC-style proxy, 700 customers | 0.9119 | 0.8000 |
 | AUC difference | 0.0875 | — |
 
 Suggested speaking note: “The proxy is generated data. It helps us rehearse a domain shift, but it is not a real SGCC benchmark or field validation. We need a documented public dataset and a partner pilot before making operational claims.”

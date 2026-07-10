@@ -6,7 +6,7 @@ This catalog describes the feature schema used by the current MASS-AI prototype.
 
 ## Evidence boundary
 
-The feature schema is exercised with synthetic data and a controlled SGCC-style realistic proxy. The proxy is generated data; it is not a public SGCC dataset, partner data, or field validation. Reported proxy metrics therefore describe a controlled domain-shift exercise only and must not be presented as utility performance.
+The feature schema is exercised with synthetic data and a controlled project-generated SGCC-style proxy. The proxy is generated data; it is not a public SGCC dataset, partner data, or field validation. Reported proxy metrics therefore describe a controlled domain-shift exercise only and must not be presented as utility performance.
 
 ## Feature groups
 
@@ -22,7 +22,13 @@ The feature schema is exercised with synthetic data and a controlled SGCC-style 
 - transformer_id and feeder_id
 - latitude and longitude
 - tariff_group
-- label and theft_type
+
+### Targets and evaluation metadata
+
+- label — the supervised target used to evaluate a training or benchmark run.
+- theft_type — synthetic-scenario and evaluation metadata that describes the assigned pattern.
+
+Neither label nor theft_type is a model input feature. Both are excluded from the model feature vector; label supplies the training target, while theft_type is retained for scenario analysis and explanation context.
 
 ### Consumption statistics
 
@@ -87,7 +93,7 @@ Before comparing this schema with a published baseline, cite the selected refere
 The integration layer in shared/core/real_data.py provides:
 
 - an adapter for compatible SGCC-style daily-column inputs;
-- a controlled SGCC-style realistic proxy generator;
+- a controlled project-generated SGCC-style proxy generator;
 - benchmark and Markdown-report helpers for synthetic/proxy comparisons.
 
 The adapter is an integration layer for evaluation work. It does not turn the default proxy result into real-world validation.
@@ -99,7 +105,7 @@ The committed May 2026 report records the following controlled run:
 | Evaluation input | AUC | F1 | Interpretation |
 | --- | ---: | ---: | --- |
 | Synthetic Turkey Urban, 900 customers | 0.9994 | 0.9697 | In-distribution synthetic result |
-| SGCC-style realistic proxy, 700 customers | 0.9119 | 0.8000 | Generated domain-shift control |
+| Project-generated SGCC-style proxy, 700 customers | 0.9119 | 0.8000 | Generated domain-shift control |
 | Difference | 0.0875 | — | Gap between the two controlled inputs |
 
 This comparison is useful for testing how the prototype behaves under a different generated distribution. It is not a real SGCC benchmark, a field-validation result, or evidence of loss reduction.

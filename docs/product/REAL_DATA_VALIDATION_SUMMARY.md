@@ -9,19 +9,19 @@ This is the concise, shareable statement of the project’s current validation e
 The repository currently contains:
 
 - L0: synthetic-data evaluation for demos, regression tests, and controlled experiments;
-- L1: a controlled SGCC-style realistic proxy evaluation; and
+- L1: a controlled project-generated SGCC-style proxy evaluation; and
 - an integration layer that can map compatible daily-column input files into the current feature schema.
 
 The repository does not contain a committed public SGCC dataset benchmark, Turkish distribution-company data, field inspections, customer interviews, or operational loss-reduction results.
 
 ## Controlled proxy result
 
-The recorded May 2026 run compares a synthetic input with an SGCC-style realistic proxy:
+The recorded May 2026 run compares a synthetic input with a project-generated SGCC-style proxy:
 
 | Dataset | AUC | F1 | What it demonstrates |
 | --- | ---: | ---: | --- |
 | Synthetic Turkey Urban, 900 customers | 0.9994 | 0.9697 | In-distribution behavior on generated data |
-| SGCC-style realistic proxy, 700 customers | 0.9119 | 0.8000 | Behavior under a different generated distribution |
+| Project-generated SGCC-style proxy, 700 customers | 0.9119 | 0.8000 | Behavior under a different generated distribution |
 | AUC difference | 0.0875 | — | A measured proxy domain-shift gap |
 
 The proxy was designed as a realistic control, not as a substitute for real data. These values are not a real SGCC benchmark, field validation, customer result, or production-performance claim.

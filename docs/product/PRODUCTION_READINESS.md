@@ -10,7 +10,7 @@ MASS-AI is a pilot-ready prototype with a data-integration layer. It is not a pr
 - A Streamlit dashboard is available under new_web/dashboard.
 - Dockerfile, Docker Compose, and a GitHub Actions test workflow are present.
 - The engine reports ROC-AUC, PR-AUC, precision at K, recall at K, and calibration-related metrics.
-- Synthetic and SGCC-style realistic proxy workflows exist.
+- Synthetic and project-generated SGCC-style proxy workflows exist.
 - The current proxy result is explicitly not real-data or field validation.
 
 ## Product and application work

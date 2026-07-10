@@ -11,7 +11,7 @@ Everything else (dashboards, desktop apps, future APIs) are thin consumers of th
 MASS-AI-Project/
 ├── shared/
 │   ├── core/                    # ← ONLY PLACE WITH REAL ML + BUSINESS LOGIC
-│   │   ├── mass_ai_engine.py    # MassAIEngine (6 models, stacking, explainability, synthetic generator)
+│   │   ├── mass_ai_engine.py    # MassAIEngine (4 base models plus a stacking ensemble, 5 model outputs in total; explainability, synthetic generator)
 │   │   ├── dashboard_adapters.py # Helpers for UIs
 │   │   ├── ops_store.py
 │   │   └── ...
@@ -30,7 +30,7 @@ MASS-AI-Project/
 ├── docs/
 │   ├── product/                 # Product and validation documentation
 │   ├── incubation/              # Incubation-facing source material
-│   ├── internal/                # Internal readiness planning
+│   ├── planning/                # Project planning
 │   ├── research/                # Research drafts
 │   └── archive/                 # Historical notes
 │
@@ -87,10 +87,10 @@ See the feature definitions and claim boundaries in [docs/product/FEATURE_CATALO
 
 **Location**: `shared/core/real_data.py`
 
-This module provides an integration layer for compatible daily-column inputs and a controlled SGCC-style realistic proxy. The proxy is generated data and is not a public SGCC benchmark or field validation.
+This module provides an integration layer for compatible daily-column inputs and a controlled project-generated SGCC-style proxy. The proxy is generated data and is not a public SGCC benchmark or field validation.
 
 Key components:
-- `generate_realistic_sgcc_proxy()` — Produces statistically realistic SGCC-style data for controlled domain-shift testing.
+- `generate_realistic_sgcc_proxy()` — Generates a project-generated SGCC-style proxy for controlled domain-shift testing.
 - `extract_sgcc_style_features()` — Robust mapper that converts classic SGCC daily-column format into the engine's ~40 feature schema.
 - `run_real_data_benchmark()` — Runs synthetic vs proxy comparison and returns clear gap metrics.
 - `generate_real_data_validation_report()` — Produces investor/incubator-ready markdown reports.

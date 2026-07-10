@@ -17,7 +17,7 @@ The long-term goal is to make `new_web/dashboard/app.py` a thin presentation lay
 ## Current Recommended Structure (2026)
 
 - `shared/core/`
-  - `mass_ai_engine.py` — Main `MassAIEngine` (6 models, stacking, explainability, strong synthetic generator with Turkish regional presets)
+  - `mass_ai_engine.py` — Main `MassAIEngine` (4 base models plus a stacking ensemble, 5 model outputs in total; explainability and a strong synthetic generator with Turkish regional presets)
   - `ops_store.py` — SQLite-backed Ops Center
   - Supporting modules (domain, metadata, prefs, support bundle)
 

@@ -23,12 +23,12 @@ The repository includes a Streamlit dashboard, a shared core engine, synthetic s
 
 ## Validation evidence and limits
 
-The current committed evidence is synthetic evaluation plus a controlled SGCC-style realistic proxy. The proxy is generated data and is not a public SGCC dataset, Turkish utility data, or field validation.
+The current committed evidence is synthetic evaluation plus a controlled project-generated SGCC-style proxy. The proxy is generated data and is not a public SGCC dataset, Turkish utility data, or field validation.
 
 | Evaluation input | AUC | F1 | Interpretation |
 | --- | ---: | ---: | --- |
 | Synthetic Turkey Urban, 900 customers | 0.9994 | 0.9697 | In-distribution synthetic result |
-| SGCC-style realistic proxy, 700 customers | 0.9119 | 0.8000 | Generated domain-shift control |
+| Project-generated SGCC-style proxy, 700 customers | 0.9119 | 0.8000 | Generated domain-shift control |
 | AUC difference | 0.0875 | — | Proxy-domain-shift signal |
 
 These results show a controlled gap between two generated inputs. They do not demonstrate utility performance, customer impact, or field accuracy. A properly documented public dataset and a privacy-safe partner pilot are still required.
