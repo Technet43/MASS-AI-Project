@@ -23,15 +23,15 @@
 
 <br/>
 
-> **MASS AI** is a machine learning platform designed to detect electricity theft and anomalies from smart meter data. It was built with Turkey's national smart meter rollout (50 million meters by 2028) in mind, targeting regions where non-technical losses can exceed 28%.
+> **MASS AI** is a machine-learning prototype for detecting electricity-theft signals and anomalies from smart-meter data. It is designed for utility decision-support workflows in Turkey and should be evaluated with documented partner data before operational claims are made.
 
 ---
 
 ## Real Data Validation (2026)
 
-In May 2026, a major focus was adding proper support for **real public datasets**.
+In May 2026, the project added an integration layer for compatible daily-column inputs and a controlled proxy evaluation.
 
-We built a complete integration layer for the SGCC electricity theft dataset (the most common academic benchmark).
+The repository can map a compatible SGCC-style CSV into the current feature schema, but it does not include a downloaded public SGCC dataset or a completed real-SGCC benchmark.
 
 **Important validation note:** the default committed benchmark uses an SGCC-style realistic proxy, not a downloaded public SGCC file. This is useful for measuring domain-shift risk, but it is not a final real-world claim. A real SGCC CSV or Turkish DSO pilot dataset is still required before production or field-performance claims.
 
@@ -45,15 +45,15 @@ We built a complete integration layer for the SGCC electricity theft dataset (th
 
 This gap is now measured and documented. Full tooling and automated reports are available.
 
-See [docs/Real_Data_Validation_Summary.md](docs/Real_Data_Validation_Summary.md) and run:
+See [the validation summary](docs/product/REAL_DATA_VALIDATION_SUMMARY.md) and run:
 ```bash
 python scripts/benchmark_real_vs_synthetic.py
 ```
 
 For stricter validation rules, see:
 
-- [docs/REAL_DATA_REQUIREMENTS.md](docs/REAL_DATA_REQUIREMENTS.md)
-- [docs/MODEL_VALIDATION.md](docs/MODEL_VALIDATION.md)
+- [Real-data requirements](docs/product/REAL_DATA_REQUIREMENTS.md)
+- [Model validation](docs/product/MODEL_VALIDATION.md)
 
 ---
 
@@ -77,7 +77,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 | 🤖 | **5 Models + Stacking** | Isolation Forest, XGBoost, Random Forest, Gradient Boosting + Stacking Ensemble |
 | 🔍 | **8 Theft Patterns** | Realistic Turkish consumption behaviors |
 | 🧮 | **~40 Features** | Statistical, temporal, peer and domain features |
-| 📊 | **Real Data Support** | SGCC-style benchmark with measured gap (~0.09 AUC) |
+| 📊 | **Data Adapter & Proxy Check** | SGCC-style input adapter and a generated proxy gap (~0.09 AUC) |
 | 🗂️ | **Ops Center** | Basic case management |
 | 🌐 | **Web Dashboard** | Streamlit UI (heavily cleaned in 2026) |
 
@@ -133,20 +133,14 @@ make dashboard
 
 ## Incubation Materials (2026)
 
-During an extended work session in May 2026, the following materials were prepared:
+Incubation-facing material is organized by purpose and keeps demonstrated evidence separate from plans and pricing hypotheses.
 
-- Full Pitch Deck content
-- Business Model & Revenue scenarios
-- Traction & Pilot Plan
-- Real Data Validation Summary
-- Incubation Readiness Checklist
-
-See [docs/Incubation_Materials_Index.md](docs/Incubation_Materials_Index.md).
+See the [documentation index](docs/README.md).
 
 Operational readiness documents:
 
-- [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)
-- [docs/PILOT_DATA_REQUEST.md](docs/PILOT_DATA_REQUEST.md)
+- [Pilot readiness and production path](docs/product/PRODUCTION_READINESS.md)
+- [Pilot data request](docs/product/PILOT_DATA_REQUEST.md)
 
 ---
 

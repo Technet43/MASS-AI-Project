@@ -1,5 +1,7 @@
 # MASS-AI Pilot Checklist
 
+> **Archive.** Historical desktop QA checklist. The desktop paths and packaging instructions may not match the current repository layout.
+
 ## Preflight
 - Install requirements.
 - Run `RUN_SMOKE_TESTS.bat`.
